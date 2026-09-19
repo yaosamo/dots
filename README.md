@@ -1,0 +1,3 @@
+# Dots
+
+Native macOS overlay.
