@@ -7,7 +7,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var panel: FloatingPanel?
     private var hostingView: DotsHostingView?
-    private var expansion: DotExpansion = .none
 
     static func main() {
         let delegate = AppDelegate()
@@ -20,7 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         installQuitMenu()
 
-        let initialSize = DotsLayout.panelSize(expansion: .none)
+        let initialSize = DotsLayout.canvasSize
         let panel = FloatingPanel(
             contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -45,15 +44,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]
 
         let hostingView = DotsHostingView(
-            rootView: DotsView { [weak self] size, animated, expansion in
-                self?.handlePanelChange(size: size, animated: animated, expansion: expansion)
+            rootView: DotsView { [weak self] expansion in
+                self?.handleExpansionChange(expansion)
             }
         )
 
         panel.contentView = hostingView
         self.hostingView = hostingView
         self.panel = panel
-        positionPanel(size: initialSize)
+        positionPanel()
         panel.orderFrontRegardless()
 
         NotificationCenter.default.addObserver(
@@ -69,14 +68,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func screenConfigurationDidChange() {
-        guard let panel else { return }
-        positionPanel(size: panel.frame.size)
+        positionPanel()
     }
 
-    private func handlePanelChange(size: CGSize, animated: Bool, expansion newExpansion: DotExpansion) {
+    private func handleExpansionChange(_ newExpansion: DotExpansion) {
         hostingView?.expansion = newExpansion
-        resizePanel(to: size, animated: animated, expansion: newExpansion)
-        expansion = newExpansion
 
         guard let panel else { return }
         if newExpansion == .tasks {
@@ -91,53 +87,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func resizePanel(to size: CGSize, animated: Bool, expansion newExpansion: DotExpansion) {
+    private func positionPanel() {
         guard let panel else { return }
-
-        let frame = frameForPanel(
-            size: size,
-            expansion: newExpansion,
-            previousExpansion: expansion,
-            keepingTopOf: panel.frame
-        )
-        guard animated else {
-            panel.setFrame(frame, display: true)
-            return
-        }
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = DotsMotion.selectionDuration
-            context.timingFunction = DotsMotion.panelTimingFunction
-            panel.animator().setFrame(frame, display: true)
-        }
+        panel.setFrame(frameForPanel(), display: true)
     }
 
-    private func positionPanel(size: CGSize) {
-        guard let panel else { return }
-        panel.setFrame(
-            frameForPanel(
-                size: size,
-                expansion: expansion,
-                previousExpansion: expansion
-            ),
-            display: true
-        )
-    }
-
-    private func frameForPanel(
-        size: CGSize,
-        expansion newExpansion: DotExpansion,
-        previousExpansion: DotExpansion,
-        keepingTopOf existingFrame: NSRect? = nil
-    ) -> NSRect {
+    private func frameForPanel() -> NSRect {
         let visibleFrame = (screenUnderPointer() ?? NSScreen.main)?.visibleFrame ?? .zero
-        return DotsLayout.panelFrame(
-            size: size,
-            expansion: newExpansion,
-            previousExpansion: previousExpansion,
-            keepingTopOf: existingFrame,
-            visibleFrame: visibleFrame
-        )
+        return DotsLayout.panelFrame(visibleFrame: visibleFrame)
     }
 
     private func screenUnderPointer() -> NSScreen? {
