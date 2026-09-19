@@ -1,0 +1,7 @@
+.plan/
+xcuserdata/
+*.xcuserstate
+DerivedData/
+.DS_Store
+*.profraw
+default.profraw
