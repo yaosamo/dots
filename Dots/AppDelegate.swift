@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var panel: FloatingPanel?
     private var hostingView: DotsHostingView?
+    private var cameraOffset: CGSize = .zero
 
     static func main() {
         let delegate = AppDelegate()
@@ -44,8 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]
 
         let hostingView = DotsHostingView(
-            rootView: DotsView { [weak self] expansion in
-                self?.handleExpansionChange(expansion)
+            rootView: DotsView { [weak self] expansion, cameraOffset in
+                self?.handleExpansionChange(expansion, cameraOffset: cameraOffset)
             }
         )
 
@@ -71,8 +72,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         positionPanel()
     }
 
-    private func handleExpansionChange(_ newExpansion: DotExpansion) {
+    private func handleExpansionChange(_ newExpansion: DotExpansion, cameraOffset newOffset: CGSize) {
         hostingView?.expansion = newExpansion
+        hostingView?.cameraOffset = newOffset
+        resizePanel(cameraOffset: newOffset)
+        cameraOffset = newOffset
 
         guard let panel else { return }
         if newExpansion == .tasks {
@@ -87,6 +91,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func resizePanel(cameraOffset newOffset: CGSize) {
+        guard let panel else { return }
+        let frame = DotsLayout.panelFrame(
+            visibleFrame: (screenUnderPointer() ?? NSScreen.main)?.visibleFrame ?? .zero,
+            cameraOffset: newOffset,
+            previousCameraOffset: cameraOffset,
+            keepingTopOf: panel.frame
+        )
+        panel.setFrame(frame, display: true)
+    }
+
     private func positionPanel() {
         guard let panel else { return }
         panel.setFrame(frameForPanel(), display: true)
@@ -94,7 +109,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func frameForPanel() -> NSRect {
         let visibleFrame = (screenUnderPointer() ?? NSScreen.main)?.visibleFrame ?? .zero
-        return DotsLayout.panelFrame(visibleFrame: visibleFrame)
+        return DotsLayout.panelFrame(
+            visibleFrame: visibleFrame,
+            cameraOffset: cameraOffset
+        )
     }
 
     private func screenUnderPointer() -> NSScreen? {
@@ -140,6 +158,7 @@ private final class FloatingPanel: NSPanel {
 
 final class DotsHostingView: NSHostingView<DotsView> {
     var expansion: DotExpansion = .none
+    var cameraOffset: CGSize = .zero
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -158,7 +177,11 @@ final class DotsHostingView: NSHostingView<DotsView> {
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         let swiftPoint = isFlipped ? point : CGPoint(x: point.x, y: bounds.height - point.y)
-        guard DotsLayout.containsInteractiveContent(swiftPoint, expansion: expansion) else {
+        guard DotsLayout.containsInteractiveContent(
+            swiftPoint,
+            expansion: expansion,
+            cameraOffset: cameraOffset
+        ) else {
             return nil
         }
 

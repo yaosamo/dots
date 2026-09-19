@@ -16,6 +16,7 @@ enum DotsLayout {
     static let stemThickness: CGFloat = 2
     static let stemHitSlop: CGFloat = 4
     static let hangingGap: CGFloat = 8
+    static let cameraDetachDistance: CGFloat = 8
     static let taskListSize = CGSize(width: 200, height: 240)
     static let taskCornerRadius: CGFloat = 16
     static let glassInset: CGFloat = 12
@@ -39,22 +40,55 @@ enum DotsLayout {
     }
 
     static var rowCenterX: CGFloat {
-        layoutOffsetX + (rowPanelSize.width / 2)
+        rowCenterX(cameraOffset: .zero)
     }
 
     static var canvasSize: CGSize {
-        CGSize(
+        canvasSize(cameraOffset: .zero)
+    }
+
+    static func extraLeft(cameraOffset: CGSize) -> CGFloat {
+        guard let hang = hangingRectInRowCoordinates(
+            expansion: .camera,
+            cameraOffset: cameraOffset
+        ) else {
+            return 0
+        }
+        return max(0, -(hang.minX + layoutOffsetX))
+    }
+
+    static func rowCenterX(cameraOffset: CGSize) -> CGFloat {
+        layoutOffsetX + extraLeft(cameraOffset: cameraOffset) + (rowPanelSize.width / 2)
+    }
+
+    static func canvasSize(cameraOffset: CGSize) -> CGSize {
+        let base = CGSize(
             width: taskListSize.width + (glassInset * 2),
             height: verticalPadding + nodeDiameter + hangingGap + taskListSize.height + glassInset
         )
+        guard let hang = hangingFrame(expansion: .camera, cameraOffset: cameraOffset) else {
+            return base
+        }
+        return CGSize(
+            width: max(base.width + extraLeft(cameraOffset: cameraOffset), hang.maxX + glassInset),
+            height: max(base.height, hang.maxY + glassInset)
+        )
     }
 
-    static func nodeFrames(expansion: DotExpansion) -> [CGRect] {
-        collapsedNodeFrames().map { $0.offsetBy(dx: layoutOffsetX, dy: 0) }
+    static func nodeFrames(
+        expansion: DotExpansion,
+        cameraOffset: CGSize = .zero
+    ) -> [CGRect] {
+        collapsedNodeFrames().map {
+            $0.offsetBy(dx: layoutOffsetX + extraLeft(cameraOffset: cameraOffset), dy: 0)
+        }
     }
 
-    static func visibleNodeFrames(expansion: DotExpansion) -> [CGRect] {
-        let frames = nodeFrames(expansion: expansion)
+    static func visibleNodeFrames(
+        expansion: DotExpansion,
+        cameraOffset: CGSize = .zero
+    ) -> [CGRect] {
+        let frames = nodeFrames(expansion: expansion, cameraOffset: cameraOffset)
         guard let activeIndex = activeNodeIndex(expansion: expansion) else {
             return frames
         }
@@ -63,34 +97,58 @@ enum DotsLayout {
         }
     }
 
-    static func hangingFrame(expansion: DotExpansion) -> CGRect? {
-        hangingRectInRowCoordinates(expansion: expansion)?
-            .offsetBy(dx: layoutOffsetX, dy: 0)
+    static func hangingFrame(
+        expansion: DotExpansion,
+        cameraOffset: CGSize = .zero
+    ) -> CGRect? {
+        hangingRectInRowCoordinates(
+            expansion: expansion,
+            cameraOffset: cameraOffset
+        )?.offsetBy(
+            dx: layoutOffsetX + extraLeft(cameraOffset: cameraOffset),
+            dy: 0
+        )
     }
 
-    static func stemRects(expansion: DotExpansion) -> [CGRect] {
-        let destination = hangingFrame(expansion: expansion)
+    static func isCameraDetached(_ offset: CGSize) -> Bool {
+        (offset.width * offset.width) + (offset.height * offset.height)
+            >= cameraDetachDistance * cameraDetachDistance
+    }
+
+    static func stemRects(
+        expansion: DotExpansion,
+        cameraOffset: CGSize = .zero
+    ) -> [CGRect] {
+        let destination = hangingFrame(expansion: expansion, cameraOffset: cameraOffset)
         let activeIndex = activeNodeIndex(expansion: expansion)
-        return nodeFrames(expansion: expansion).enumerated().map { index, frame in
-            let endY = index == activeIndex ? destination?.minY ?? frame.midY : frame.midY
-            return CGRect(
-                x: frame.midX - (stemThickness / 2),
-                y: 0,
-                width: stemThickness,
-                height: endY
-            )
-        }
+        return nodeFrames(expansion: expansion, cameraOffset: cameraOffset)
+            .enumerated()
+            .map { index, frame in
+                if expansion == .camera, index == 0, isCameraDetached(cameraOffset) {
+                    return .zero
+                }
+                let endY = index == activeIndex ? destination?.minY ?? frame.midY : frame.midY
+                return CGRect(
+                    x: frame.midX - (stemThickness / 2),
+                    y: 0,
+                    width: stemThickness,
+                    height: endY
+                )
+            }
     }
 
     static func containsInteractiveContent(
         _ point: CGPoint,
-        expansion: DotExpansion
+        expansion: DotExpansion,
+        cameraOffset: CGSize = .zero
     ) -> Bool {
-        if visibleNodeFrames(expansion: expansion).contains(where: { circleContains($0, point) }) {
+        if visibleNodeFrames(expansion: expansion, cameraOffset: cameraOffset)
+            .contains(where: { circleContains($0, point) })
+        {
             return true
         }
 
-        if let hang = hangingFrame(expansion: expansion) {
+        if let hang = hangingFrame(expansion: expansion, cameraOffset: cameraOffset) {
             switch expansion {
             case .camera:
                 if circleContains(hang, point) { return true }
@@ -103,17 +161,34 @@ enum DotsLayout {
             }
         }
 
-        return stemRects(expansion: expansion).contains { stem in
-            stem.insetBy(dx: -stemHitSlop, dy: 0).contains(point)
+        return stemRects(expansion: expansion, cameraOffset: cameraOffset).contains { stem in
+            guard stem.width > 0, stem.height > 0 else { return false }
+            return stem.insetBy(dx: -stemHitSlop, dy: 0).contains(point)
         }
     }
 
-    static func panelFrame(visibleFrame: CGRect) -> CGRect {
+    static func panelFrame(
+        visibleFrame: CGRect,
+        cameraOffset: CGSize = .zero,
+        previousCameraOffset: CGSize = .zero,
+        keepingTopOf existingFrame: CGRect? = nil
+    ) -> CGRect {
+        let size = canvasSize(cameraOffset: cameraOffset)
+        let rowCenter = rowCenterX(cameraOffset: cameraOffset)
+        if let existingFrame {
+            let previousRowCenter = rowCenterX(cameraOffset: previousCameraOffset)
+            return CGRect(
+                x: existingFrame.minX + previousRowCenter - rowCenter,
+                y: existingFrame.maxY - size.height,
+                width: size.width,
+                height: size.height
+            )
+        }
         return CGRect(
-            x: visibleFrame.midX - rowCenterX,
-            y: visibleFrame.maxY - canvasSize.height,
-            width: canvasSize.width,
-            height: canvasSize.height
+            x: visibleFrame.midX - rowCenter,
+            y: visibleFrame.maxY - size.height,
+            width: size.width,
+            height: size.height
         )
     }
 
@@ -131,19 +206,27 @@ enum DotsLayout {
         }
     }
 
-    private static func hangingRectInRowCoordinates(expansion: DotExpansion) -> CGRect? {
+    private static func hangingRectInRowCoordinates(
+        expansion: DotExpansion,
+        cameraOffset: CGSize = .zero
+    ) -> CGRect? {
         let nodes = collapsedNodeFrames()
         switch expansion {
         case .none:
             return nil
         case .camera:
             let dot = nodes[0]
-            return CGRect(
+            var frame = CGRect(
                 x: dot.midX - (cameraDiameter / 2),
                 y: dot.maxY + hangingGap,
                 width: cameraDiameter,
                 height: cameraDiameter
             )
+            frame = frame.offsetBy(dx: cameraOffset.width, dy: cameraOffset.height)
+            if frame.minY < 0 {
+                frame.origin.y = 0
+            }
+            return frame
         case .tasks:
             let dot = nodes[1]
             return CGRect(
@@ -225,23 +308,27 @@ struct DotsView: View {
     @StateObject private var tasks = TaskStore()
     @State private var expansion: DotExpansion = .none
     @State private var hoveredDot: Int?
+    @State private var cameraOffset: CGSize = .zero
+    @State private var cameraDragStart: CGSize = .zero
     @Namespace private var morphNamespace
 
-    let onExpansionChange: (DotExpansion) -> Void
+    let onExpansionChange: (DotExpansion, CGSize) -> Void
 
     var body: some View {
-        let stems = DotsLayout.stemRects(expansion: expansion)
-        let firstNode = DotsLayout.nodeFrames(expansion: expansion)[0]
+        let stems = DotsLayout.stemRects(expansion: expansion, cameraOffset: cameraOffset)
+        let firstNode = DotsLayout.nodeFrames(expansion: expansion, cameraOffset: cameraOffset)[0]
+        let canvas = DotsLayout.canvasSize(cameraOffset: cameraOffset)
 
         morphContainer {
             ZStack(alignment: .topLeading) {
                 ForEach(stems.indices, id: \.self) { index in
                     let stem = stems[index]
-
-                    Rectangle()
-                        .fill(.black)
-                        .frame(width: stem.width, height: stem.height)
-                        .offset(x: stem.minX, y: stem.minY)
+                    if stem.width > 0, stem.height > 0 {
+                        Rectangle()
+                            .fill(.black)
+                            .frame(width: stem.width, height: stem.height)
+                            .offset(x: stem.minX, y: stem.minY)
+                    }
                 }
 
                 HStack(alignment: .top, spacing: DotsLayout.nodeSpacing) {
@@ -253,7 +340,12 @@ struct DotsView: View {
                 .padding(.leading, firstNode.minX)
                 .padding(.top, DotsLayout.verticalPadding)
 
-                if expansion == .camera, let hang = DotsLayout.hangingFrame(expansion: .camera) {
+                if expansion == .camera,
+                   let hang = DotsLayout.hangingFrame(
+                       expansion: .camera,
+                       cameraOffset: cameraOffset
+                   )
+                {
                     expandedCamera
                         .frame(width: hang.width, height: hang.height)
                         .offset(x: hang.minX, y: hang.minY)
@@ -267,15 +359,18 @@ struct DotsView: View {
             }
         }
         .frame(
-            width: DotsLayout.canvasSize.width,
-            height: DotsLayout.canvasSize.height,
+            width: canvas.width,
+            height: canvas.height,
             alignment: .topLeading
         )
         .onAppear {
-            onExpansionChange(.none)
+            onExpansionChange(.none, .zero)
         }
         .onChange(of: expansion) { _, newExpansion in
-            onExpansionChange(newExpansion)
+            onExpansionChange(newExpansion, cameraOffset)
+        }
+        .onChange(of: cameraOffset) { _, newOffset in
+            onExpansionChange(expansion, newOffset)
         }
         .onDisappear {
             camera.stop()
@@ -341,8 +436,30 @@ struct DotsView: View {
             .contentShape(Circle())
         }
         .buttonStyle(DotPressStyle(reduceMotion: reduceMotion))
+        .onHover { hovering in
+            if hovering {
+                NSCursor.openHand.set()
+            } else {
+                NSCursor.arrow.set()
+            }
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 4)
+                .onChanged { value in
+                    NSCursor.closedHand.set()
+                    cameraOffset = CGSize(
+                        width: cameraDragStart.width + value.translation.width,
+                        height: cameraDragStart.height + value.translation.height
+                    )
+                }
+                .onEnded { _ in
+                    cameraDragStart = cameraOffset
+                    NSCursor.openHand.set()
+                }
+        )
         .accessibilityLabel("Close selfie camera")
         .accessibilityValue(camera.accessibilityDescription)
+        .accessibilityHint("Drag to place the camera. The sprout hides once it leaves the row.")
     }
 
     @ViewBuilder
@@ -478,6 +595,8 @@ struct DotsView: View {
             camera.start()
         } else {
             camera.stop()
+            cameraOffset = .zero
+            cameraDragStart = .zero
         }
 
         if reduceMotion {

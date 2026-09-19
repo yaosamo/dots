@@ -122,6 +122,86 @@ final class DotsLayoutTests: XCTestCase {
             }
         }
     }
+
+    func testCameraIsDockedUntilItMovesPastTheDetachDistance() {
+        XCTAssertFalse(DotsLayout.isCameraDetached(.zero))
+        XCTAssertFalse(DotsLayout.isCameraDetached(CGSize(width: 4, height: 4)))
+        XCTAssertTrue(DotsLayout.isCameraDetached(CGSize(width: 8, height: 0)))
+        XCTAssertTrue(DotsLayout.isCameraDetached(CGSize(width: 0, height: 12)))
+    }
+
+    func testDetachedCameraHidesTheFirstStem() {
+        let offset = CGSize(width: 80, height: 40)
+        let stems = DotsLayout.stemRects(expansion: .camera, cameraOffset: offset)
+
+        XCTAssertEqual(stems[0], .zero)
+        XCTAssertGreaterThan(stems[1].height, 0)
+        XCTAssertGreaterThan(stems[2].height, 0)
+        XCTAssertGreaterThan(stems[3].height, 0)
+    }
+
+    func testDockedCameraStemMeetsTheMorphedSurface() {
+        let frames = DotsLayout.nodeFrames(expansion: .camera)
+        let stems = DotsLayout.stemRects(expansion: .camera)
+        let hang = DotsLayout.hangingFrame(expansion: .camera)!
+
+        XCTAssertEqual(stems[0].midX, frames[0].midX)
+        XCTAssertEqual(stems[0].minY, 0)
+        XCTAssertEqual(stems[0].maxY, hang.minY)
+    }
+
+    func testDraggingCameraLeftKeepsTheDotRowInPlace() {
+        let offset = CGSize(width: -100, height: 0)
+        let visible = CGRect(x: 100, y: 50, width: 1440, height: 900)
+        let docked = DotsLayout.panelFrame(visibleFrame: visible)
+        let dragged = DotsLayout.panelFrame(
+            visibleFrame: visible,
+            cameraOffset: offset,
+            previousCameraOffset: .zero,
+            keepingTopOf: docked
+        )
+        let dockedDot = docked.minX + DotsLayout.nodeFrames(expansion: .camera)[0].minX
+        let draggedDot = dragged.minX
+            + DotsLayout.nodeFrames(expansion: .camera, cameraOffset: offset)[0].minX
+
+        XCTAssertEqual(dragged.maxY, docked.maxY)
+        XCTAssertEqual(draggedDot, dockedDot)
+        XCTAssertGreaterThan(dragged.width, docked.width)
+    }
+
+    func testDraggingCameraDownExtendsTheCanvas() {
+        let offset = CGSize(width: 0, height: 200)
+        XCTAssertGreaterThan(
+            DotsLayout.canvasSize(cameraOffset: offset).height,
+            DotsLayout.canvasSize.height
+        )
+        XCTAssertEqual(
+            DotsLayout.hangingFrame(expansion: .camera, cameraOffset: offset)?.minY,
+            232
+        )
+    }
+
+    func testHitTestingFollowsADraggedCameraAndIgnoresTheMissingStem() {
+        let offset = CGSize(width: 80, height: 40)
+        let hang = DotsLayout.hangingFrame(expansion: .camera, cameraOffset: offset)!
+        let firstDot = DotsLayout.nodeFrames(expansion: .camera, cameraOffset: offset)[0]
+        let vanishedStem = CGPoint(x: firstDot.midX, y: 4)
+
+        XCTAssertTrue(
+            DotsLayout.containsInteractiveContent(
+                CGPoint(x: hang.midX, y: hang.midY),
+                expansion: .camera,
+                cameraOffset: offset
+            )
+        )
+        XCTAssertFalse(
+            DotsLayout.containsInteractiveContent(
+                vanishedStem,
+                expansion: .camera,
+                cameraOffset: offset
+            )
+        )
+    }
 }
 
 final class CameraLogicTests: XCTestCase {
