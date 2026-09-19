@@ -18,6 +18,11 @@ enum DotsLayout {
     static let hangingGap: CGFloat = 8
     static let taskListSize = CGSize(width: 200, height: 240)
     static let taskCornerRadius: CGFloat = 16
+    static let glassInset: CGFloat = 12
+
+    private static var layoutOffsetX: CGFloat {
+        glassInset - (hangingRectInRowCoordinates(expansion: .tasks)?.minX ?? 0)
+    }
 
     static var rowContentSize: CGSize {
         CGSize(
@@ -33,39 +38,46 @@ enum DotsLayout {
         )
     }
 
-    static func extraLeft(expansion: DotExpansion) -> CGFloat {
-        max(0, -(hangingRectInRowCoordinates(expansion: expansion)?.minX ?? 0))
+    static var rowCenterX: CGFloat {
+        layoutOffsetX + (rowPanelSize.width / 2)
     }
 
-    static func panelSize(expansion: DotExpansion) -> CGSize {
-        let row = rowPanelSize
-        guard let hang = hangingRectInRowCoordinates(expansion: expansion) else {
-            return row
-        }
-
-        let minX = min(0, hang.minX)
-        let maxX = max(row.width, hang.maxX)
-        let maxY = max(row.height, hang.maxY + verticalPadding)
-        return CGSize(width: maxX - minX, height: maxY)
+    static var canvasSize: CGSize {
+        CGSize(
+            width: taskListSize.width + (glassInset * 2),
+            height: verticalPadding + nodeDiameter + hangingGap + taskListSize.height + glassInset
+        )
     }
 
     static func nodeFrames(expansion: DotExpansion) -> [CGRect] {
-        let dx = extraLeft(expansion: expansion)
-        return collapsedNodeFrames().map { $0.offsetBy(dx: dx, dy: 0) }
+        collapsedNodeFrames().map { $0.offsetBy(dx: layoutOffsetX, dy: 0) }
+    }
+
+    static func visibleNodeFrames(expansion: DotExpansion) -> [CGRect] {
+        let frames = nodeFrames(expansion: expansion)
+        guard let activeIndex = activeNodeIndex(expansion: expansion) else {
+            return frames
+        }
+        return frames.enumerated().compactMap { index, frame in
+            index == activeIndex ? nil : frame
+        }
     }
 
     static func hangingFrame(expansion: DotExpansion) -> CGRect? {
         hangingRectInRowCoordinates(expansion: expansion)?
-            .offsetBy(dx: extraLeft(expansion: expansion), dy: 0)
+            .offsetBy(dx: layoutOffsetX, dy: 0)
     }
 
     static func stemRects(expansion: DotExpansion) -> [CGRect] {
-        nodeFrames(expansion: expansion).map { frame in
-            CGRect(
+        let destination = hangingFrame(expansion: expansion)
+        let activeIndex = activeNodeIndex(expansion: expansion)
+        return nodeFrames(expansion: expansion).enumerated().map { index, frame in
+            let endY = index == activeIndex ? destination?.minY ?? frame.midY : frame.midY
+            return CGRect(
                 x: frame.midX - (stemThickness / 2),
                 y: 0,
                 width: stemThickness,
-                height: frame.midY
+                height: endY
             )
         }
     }
@@ -74,7 +86,7 @@ enum DotsLayout {
         _ point: CGPoint,
         expansion: DotExpansion
     ) -> Bool {
-        if nodeFrames(expansion: expansion).contains(where: { circleContains($0, point) }) {
+        if visibleNodeFrames(expansion: expansion).contains(where: { circleContains($0, point) }) {
             return true
         }
 
@@ -96,31 +108,12 @@ enum DotsLayout {
         }
     }
 
-    static func panelFrame(
-        size: CGSize,
-        expansion: DotExpansion,
-        previousExpansion: DotExpansion = .none,
-        keepingTopOf existingFrame: CGRect? = nil,
-        visibleFrame: CGRect
-    ) -> CGRect {
-        let rowCenter = extraLeft(expansion: expansion) + (rowPanelSize.width / 2)
-
-        if let existingFrame {
-            let previousRowCenter = extraLeft(expansion: previousExpansion) + (rowPanelSize.width / 2)
-            let screenRowCenter = existingFrame.minX + previousRowCenter
-            return CGRect(
-                x: screenRowCenter - rowCenter,
-                y: existingFrame.maxY - size.height,
-                width: size.width,
-                height: size.height
-            )
-        }
-
+    static func panelFrame(visibleFrame: CGRect) -> CGRect {
         return CGRect(
-            x: visibleFrame.midX - rowCenter,
-            y: visibleFrame.maxY - size.height,
-            width: size.width,
-            height: size.height
+            x: visibleFrame.midX - rowCenterX,
+            y: visibleFrame.maxY - canvasSize.height,
+            width: canvasSize.width,
+            height: canvasSize.height
         )
     }
 
@@ -162,6 +155,17 @@ enum DotsLayout {
         }
     }
 
+    private static func activeNodeIndex(expansion: DotExpansion) -> Int? {
+        switch expansion {
+        case .none:
+            nil
+        case .camera:
+            0
+        case .tasks:
+            1
+        }
+    }
+
     private static func circleContains(_ rect: CGRect, _ point: CGPoint) -> Bool {
         let dx = point.x - rect.midX
         let dy = point.y - rect.midY
@@ -200,15 +204,19 @@ enum DotsMotion {
     static let hoverOutDuration = 0.12
     static let pressInDuration = 0.05
     static let pressOutDuration = 0.09
-    static let selectionDuration = 0.16
+    static let selectionDuration = 0.26
+    static let contentInDuration = 0.12
+    static let contentInDelay = 0.08
+    static let contentOutDuration = 0.08
 
     static var selectionAnimation: Animation {
-        .easeOut(duration: selectionDuration)
+        .spring(duration: selectionDuration, bounce: 0.08)
     }
+}
 
-    static var panelTimingFunction: CAMediaTimingFunction {
-        CAMediaTimingFunction(name: .easeOut)
-    }
+private enum MorphSurfaceID: Hashable, Sendable {
+    case camera
+    case tasks
 }
 
 struct DotsView: View {
@@ -217,116 +225,180 @@ struct DotsView: View {
     @StateObject private var tasks = TaskStore()
     @State private var expansion: DotExpansion = .none
     @State private var hoveredDot: Int?
+    @Namespace private var morphNamespace
 
-    let onWindowSizeChange: (CGSize, Bool, DotExpansion) -> Void
+    let onExpansionChange: (DotExpansion) -> Void
 
     var body: some View {
-        let panelSize = DotsLayout.panelSize(expansion: expansion)
         let stems = DotsLayout.stemRects(expansion: expansion)
-        let extraLeft = DotsLayout.extraLeft(expansion: expansion)
+        let firstNode = DotsLayout.nodeFrames(expansion: expansion)[0]
 
-        ZStack(alignment: .topLeading) {
-            ForEach(stems.indices, id: \.self) { index in
-                let stem = stems[index]
+        morphContainer {
+            ZStack(alignment: .topLeading) {
+                ForEach(stems.indices, id: \.self) { index in
+                    let stem = stems[index]
 
-                Rectangle()
-                    .fill(.black)
-                    .frame(width: stem.width, height: stem.height)
-                    .offset(x: stem.minX, y: stem.minY)
-            }
+                    Rectangle()
+                        .fill(.black)
+                        .frame(width: stem.width, height: stem.height)
+                        .offset(x: stem.minX, y: stem.minY)
+                }
 
-            HStack(alignment: .top, spacing: DotsLayout.nodeSpacing) {
-                cameraButton
-                taskButton
-                decorativeDot
-                decorativeDot
-            }
-            .padding(.leading, extraLeft + DotsLayout.horizontalPadding)
-            .padding(.top, DotsLayout.verticalPadding)
+                HStack(alignment: .top, spacing: DotsLayout.nodeSpacing) {
+                    cameraSlot
+                    taskSlot
+                    decorativeDot
+                    decorativeDot
+                }
+                .padding(.leading, firstNode.minX)
+                .padding(.top, DotsLayout.verticalPadding)
 
-            if expansion == .camera, let hang = DotsLayout.hangingFrame(expansion: .camera) {
-                hangingCamera
-                    .frame(width: hang.width, height: hang.height)
-                    .offset(x: hang.minX, y: hang.minY)
-            }
+                if expansion == .camera, let hang = DotsLayout.hangingFrame(expansion: .camera) {
+                    expandedCamera
+                        .frame(width: hang.width, height: hang.height)
+                        .offset(x: hang.minX, y: hang.minY)
+                }
 
-            if expansion == .tasks, let hang = DotsLayout.hangingFrame(expansion: .tasks) {
-                TaskListView(store: tasks)
-                    .offset(x: hang.minX, y: hang.minY)
+                if expansion == .tasks, let hang = DotsLayout.hangingFrame(expansion: .tasks) {
+                    expandedTasks
+                        .frame(width: hang.width, height: hang.height)
+                        .offset(x: hang.minX, y: hang.minY)
+                }
             }
         }
-        .frame(width: panelSize.width, height: panelSize.height, alignment: .topLeading)
+        .frame(
+            width: DotsLayout.canvasSize.width,
+            height: DotsLayout.canvasSize.height,
+            alignment: .topLeading
+        )
         .onAppear {
-            onWindowSizeChange(DotsLayout.panelSize(expansion: .none), false, .none)
+            onExpansionChange(.none)
         }
         .onChange(of: expansion) { _, newExpansion in
-            onWindowSizeChange(
-                DotsLayout.panelSize(expansion: newExpansion),
-                !reduceMotion,
-                newExpansion
-            )
+            onExpansionChange(newExpansion)
         }
         .onDisappear {
             camera.stop()
         }
     }
 
-    private var cameraButton: some View {
-        Button(action: toggleCamera) {
-            Circle()
-                .fill(.black)
+    @ViewBuilder
+    private var cameraSlot: some View {
+        if expansion == .camera {
+            Color.clear
+                .frame(
+                    width: DotsLayout.nodeDiameter,
+                    height: DotsLayout.nodeDiameter
+                )
+        } else {
+            Button(action: toggleCamera) {
+                MorphSurface(
+                    id: .camera,
+                    namespace: morphNamespace,
+                    reduceMotion: reduceMotion,
+                    shape: Circle()
+                ) {
+                    Color.clear
+                }
                 .frame(
                     width: DotsLayout.nodeDiameter,
                     height: DotsLayout.nodeDiameter
                 )
                 .contentShape(Circle())
+            }
+            .buttonStyle(DotPressStyle(reduceMotion: reduceMotion))
+            .scaleEffect(hoveredDot == 0 ? 1.04 : 1)
+            .animation(hoverAnimation(for: 0), value: hoveredDot == 0)
+            .onHover { hovering in
+                hoveredDot = hovering ? 0 : nil
+            }
+            .accessibilityLabel("Open selfie camera")
+            .accessibilityValue(camera.accessibilityDescription)
+        }
+    }
+
+    private var expandedCamera: some View {
+        Button(action: toggleCamera) {
+            MorphSurface(
+                id: .camera,
+                namespace: morphNamespace,
+                reduceMotion: reduceMotion,
+                shape: Circle()
+            ) {
+                ZStack {
+                    CameraPreview(session: camera.session)
+                        .opacity(camera.status == .running ? 1 : 0)
+
+                    cameraStatusOverlay
+
+                    Circle()
+                        .stroke(.white.opacity(0.16), lineWidth: 0.75)
+                }
+                .clipShape(Circle())
+                .allowsHitTesting(false)
+                .transition(contentTransition)
+            }
+            .contentShape(Circle())
         }
         .buttonStyle(DotPressStyle(reduceMotion: reduceMotion))
-        .scaleEffect(hoveredDot == 0 ? 1.04 : 1)
-        .animation(hoverAnimation(for: 0), value: hoveredDot == 0)
-        .onHover { hovering in
-            hoveredDot = hovering ? 0 : nil
-        }
-        .accessibilityLabel(expansion == .camera ? "Close selfie camera" : "Open selfie camera")
+        .accessibilityLabel("Close selfie camera")
         .accessibilityValue(camera.accessibilityDescription)
     }
 
-    private var hangingCamera: some View {
-        ZStack {
-            Circle()
-                .fill(.black)
-
-            CameraPreview(session: camera.session)
-                .opacity(camera.status == .running ? 1 : 0)
-
-            cameraStatusOverlay
-        }
-        .clipShape(Circle())
-        .overlay {
-            Circle()
-                .stroke(.black, lineWidth: DotsLayout.stemThickness)
-        }
-        .allowsHitTesting(false)
-    }
-
-    private var taskButton: some View {
-        Button(action: toggleTasks) {
-            Circle()
-                .fill(.black)
+    @ViewBuilder
+    private var taskSlot: some View {
+        if expansion == .tasks {
+            Color.clear
+                .frame(
+                    width: DotsLayout.nodeDiameter,
+                    height: DotsLayout.nodeDiameter
+                )
+        } else {
+            Button(action: toggleTasks) {
+                MorphSurface(
+                    id: .tasks,
+                    namespace: morphNamespace,
+                    reduceMotion: reduceMotion,
+                    shape: RoundedRectangle(
+                        cornerRadius: DotsLayout.taskCornerRadius,
+                        style: .continuous
+                    )
+                ) {
+                    Color.clear
+                }
                 .frame(
                     width: DotsLayout.nodeDiameter,
                     height: DotsLayout.nodeDiameter
                 )
                 .contentShape(Circle())
+            }
+            .buttonStyle(DotPressStyle(reduceMotion: reduceMotion))
+            .scaleEffect(hoveredDot == 1 ? 1.04 : 1)
+            .animation(hoverAnimation(for: 1), value: hoveredDot == 1)
+            .onHover { hovering in
+                hoveredDot = hovering ? 1 : nil
+            }
+            .accessibilityLabel("Open task list")
+            .accessibilityValue("\(tasks.items.filter { !$0.isDone }.count) open")
         }
-        .buttonStyle(DotPressStyle(reduceMotion: reduceMotion))
-        .scaleEffect(hoveredDot == 1 ? 1.04 : 1)
-        .animation(hoverAnimation(for: 1), value: hoveredDot == 1)
-        .onHover { hovering in
-            hoveredDot = hovering ? 1 : nil
+    }
+
+    private var expandedTasks: some View {
+        MorphSurface(
+            id: .tasks,
+            namespace: morphNamespace,
+            reduceMotion: reduceMotion,
+            shape: RoundedRectangle(
+                cornerRadius: DotsLayout.taskCornerRadius,
+                style: .continuous
+            )
+        ) {
+            TaskListView(store: tasks, onClose: toggleTasks)
+                .transition(contentTransition)
         }
-        .accessibilityLabel(expansion == .tasks ? "Close task list" : "Open task list")
-        .accessibilityValue("\(tasks.items.filter { !$0.isDone }.count) open")
+        .contentShape(
+            RoundedRectangle(cornerRadius: DotsLayout.taskCornerRadius, style: .continuous)
+        )
     }
 
     private var decorativeDot: some View {
@@ -369,6 +441,30 @@ struct DotsView: View {
             )
     }
 
+    private var contentTransition: AnyTransition {
+        guard !reduceMotion else { return .identity }
+        return .asymmetric(
+            insertion: .opacity.animation(
+                .easeOut(duration: DotsMotion.contentInDuration)
+                    .delay(DotsMotion.contentInDelay)
+            ),
+            removal: .opacity.animation(.easeIn(duration: DotsMotion.contentOutDuration))
+        )
+    }
+
+    @ViewBuilder
+    private func morphContainer<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: DotsLayout.hangingGap) {
+                content()
+            }
+        } else {
+            content()
+        }
+    }
+
     private func toggleCamera() {
         setExpansion(expansion == .camera ? .none : .camera)
     }
@@ -394,12 +490,88 @@ struct DotsView: View {
     }
 }
 
+private struct MorphSurface<SurfaceShape: Shape, Content: View>: View {
+    let id: MorphSurfaceID
+    let namespace: Namespace.ID
+    let reduceMotion: Bool
+    let shape: SurfaceShape
+    let content: Content
+
+    init(
+        id: MorphSurfaceID,
+        namespace: Namespace.ID,
+        reduceMotion: Bool,
+        shape: SurfaceShape,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.id = id
+        self.namespace = namespace
+        self.reduceMotion = reduceMotion
+        self.shape = shape
+        self.content = content()
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if #available(macOS 26.0, *) {
+            ZStack {
+                Color.clear
+                content
+            }
+                .glassEffect(
+                    .regular
+                        .tint(.black.opacity(0.76))
+                        .interactive(),
+                    in: shape
+                )
+                .glassEffectID(id, in: namespace)
+                .glassEffectTransition(reduceMotion ? .identity : .matchedGeometry)
+                .overlay {
+                    shape.stroke(.white.opacity(0.14), lineWidth: 0.75)
+                }
+        } else {
+            ZStack {
+                shape
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        shape.fill(.black.opacity(0.82))
+                    }
+                    .overlay {
+                        shape.stroke(.white.opacity(0.12), lineWidth: 0.75)
+                    }
+                    .matchedGeometryEffect(id: id, in: namespace)
+
+                content
+            }
+        }
+    }
+}
+
 struct TaskListView: View {
     @ObservedObject var store: TaskStore
     @State private var hoveredTaskID: UUID?
+    let onClose: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Tasks")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.92))
+
+                Spacer()
+
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close task list")
+            }
+
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
                     if store.items.isEmpty {
@@ -436,10 +608,6 @@ struct TaskListView: View {
             width: DotsLayout.taskListSize.width,
             height: DotsLayout.taskListSize.height,
             alignment: .topLeading
-        )
-        .background(
-            Color.black,
-            in: RoundedRectangle(cornerRadius: DotsLayout.taskCornerRadius, style: .continuous)
         )
         .contentShape(
             RoundedRectangle(cornerRadius: DotsLayout.taskCornerRadius, style: .continuous)
