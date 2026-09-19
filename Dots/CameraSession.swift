@@ -71,6 +71,56 @@ enum CameraStatusOverlay: Equatable {
     case unavailable
 }
 
+struct CameraGeneration: Equatable {
+    private(set) var token: UInt64 = 0
+    private(set) var wantsToRun = false
+
+    mutating func start() -> UInt64 {
+        token += 1
+        wantsToRun = true
+        return token
+    }
+
+    mutating func stop() -> UInt64 {
+        token += 1
+        wantsToRun = false
+        return token
+    }
+
+    func isCurrent(_ candidate: UInt64) -> Bool {
+        candidate == token
+    }
+}
+
+enum CameraPreviewPreset {
+    static let candidates: [AVCaptureSession.Preset] = [
+        .vga640x480,
+        .medium,
+        .cif352x288,
+        .low,
+        .high,
+    ]
+
+    static func preferred(canSet: (AVCaptureSession.Preset) -> Bool) -> AVCaptureSession.Preset {
+        candidates.first(where: canSet) ?? .high
+    }
+}
+
+enum CameraRuntimeErrorPolicy {
+    /// `AVErrorMediaServicesWereReset`; not exposed as `AVError.Code` on macOS.
+    static let mediaServicesWereResetCode = -11819
+
+    static func isMediaServicesReset(_ error: Error?) -> Bool {
+        let nsError = error as NSError?
+        return nsError?.domain == AVFoundationErrorDomain
+            && nsError?.code == mediaServicesWereResetCode
+    }
+
+    static func shouldRetry(alreadyRetried: Bool, error: Error?) -> Bool {
+        !alreadyRetried && isMediaServicesReset(error)
+    }
+}
+
 final class CameraSession: ObservableObject {
     enum Status: Equatable {
         case idle
@@ -118,8 +168,9 @@ final class CameraSession: ObservableObject {
 
     private let sessionQueue = DispatchQueue(label: "com.yaosamo.Dots.camera-session")
     private let requestLock = NSLock()
+    private var generation = CameraGeneration()
     private var isConfigured = false
-    private var wantsToRun = false
+    private var retriedMediaResetToken: UInt64?
     private var observers: [NSObjectProtocol] = []
 
     var accessibilityDescription: String {
@@ -138,61 +189,67 @@ final class CameraSession: ObservableObject {
     }
 
     func start() {
-        setWantsToRun(true)
+        let token = beginStart()
 
         switch CameraAuthorization.action(for: AVCaptureDevice.authorizationStatus(for: .video)) {
         case .start:
-            publish(.starting)
-            startSessionOnQueue()
+            publish(.starting, token: token)
+            startSessionOnQueue(token: token)
         case .requestAccess:
-            publish(.requestingPermission)
+            publish(.requestingPermission, token: token)
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                guard let self else { return }
+                guard let self, self.isCurrent(token) else { return }
                 if granted, self.shouldRun {
-                    self.publish(.starting)
-                    self.startSessionOnQueue()
+                    self.publish(.starting, token: token)
+                    self.startSessionOnQueue(token: token)
                 } else {
-                    self.publish(granted ? .idle : .denied)
+                    self.publish(granted ? .idle : .denied, token: token)
                 }
             }
         case .denied:
-            publish(.denied)
+            publish(.denied, token: token)
         case .failed:
-            publish(.failed)
+            publish(.failed, token: token)
         }
     }
 
     func stop() {
-        setWantsToRun(false)
+        let token = beginStop()
         sessionQueue.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.isCurrent(token) else { return }
             if self.session.isRunning {
                 self.session.stopRunning()
             }
-            self.publish(.idle)
+            self.publish(.idle, token: token)
         }
     }
 
-    private func startSessionOnQueue() {
+    private func startSessionOnQueue(token: UInt64) {
         sessionQueue.async { [weak self] in
-            self?.runSessionIfNeeded()
+            self?.runSessionIfNeeded(token: token)
         }
     }
 
-    private func runSessionIfNeeded() {
-        guard shouldRun else { return }
+    private func runSessionIfNeeded(token: UInt64) {
+        guard isCurrent(token), shouldRun else { return }
 
         do {
             try configureIfNeeded()
-            guard shouldRun else { return }
+            guard isCurrent(token), shouldRun else { return }
             if !session.isRunning {
                 session.startRunning()
             }
-            publish(.running)
+            guard isCurrent(token), shouldRun else {
+                if session.isRunning {
+                    session.stopRunning()
+                }
+                return
+            }
+            publish(.running, token: token)
         } catch CameraError.noDevice {
-            publish(.unavailable)
+            publish(.unavailable, token: token)
         } catch {
-            publish(.failed)
+            publish(.failed, token: token)
         }
     }
 
@@ -209,13 +266,13 @@ final class CameraSession: ObservableObject {
         let input = try AVCaptureDeviceInput(device: device)
         session.beginConfiguration()
         defer { session.commitConfiguration() }
-        session.sessionPreset = .high
 
         guard session.canAddInput(input) else {
             throw CameraError.cannotAddInput
         }
 
         session.addInput(input)
+        session.sessionPreset = CameraPreviewPreset.preferred(canSet: session.canSetSessionPreset)
         isConfigured = true
     }
 
@@ -269,12 +326,22 @@ final class CameraSession: ObservableObject {
                 forName: .AVCaptureSessionRuntimeError,
                 object: session,
                 queue: nil
-            ) { [weak self] _ in
+            ) { [weak self] notification in
+                let error = notification.userInfo?[AVCaptureSessionErrorKey] as? Error
                 self?.sessionQueue.async {
                     guard let self else { return }
+                    let token = self.currentToken()
+                    guard self.isCurrent(token), self.shouldRun else { return }
                     self.resetConfiguration()
-                    if self.shouldRun {
-                        self.publish(.failed)
+                    if CameraRuntimeErrorPolicy.shouldRetry(
+                        alreadyRetried: self.retriedMediaResetToken == token,
+                        error: error
+                    ) {
+                        self.retriedMediaResetToken = token
+                        self.publish(.starting, token: token)
+                        self.runSessionIfNeeded(token: token)
+                    } else {
+                        self.publish(.failed, token: token)
                     }
                 }
             }
@@ -287,8 +354,10 @@ final class CameraSession: ObservableObject {
                 queue: nil
             ) { [weak self] _ in
                 self?.sessionQueue.async {
-                    guard let self, self.shouldRun else { return }
-                    self.publish(.failed)
+                    guard let self else { return }
+                    let token = self.currentToken()
+                    guard self.isCurrent(token), self.shouldRun else { return }
+                    self.publish(.failed, token: token)
                 }
             }
         )
@@ -300,12 +369,14 @@ final class CameraSession: ObservableObject {
                 queue: nil
             ) { [weak self] _ in
                 self?.sessionQueue.async {
-                    guard let self, self.shouldRun else { return }
+                    guard let self else { return }
+                    let token = self.currentToken()
+                    guard self.isCurrent(token), self.shouldRun else { return }
                     if self.session.isRunning {
-                        self.publish(.running)
+                        self.publish(.running, token: token)
                     } else {
-                        self.publish(.starting)
-                        self.runSessionIfNeeded()
+                        self.publish(.starting, token: token)
+                        self.runSessionIfNeeded(token: token)
                     }
                 }
             }
@@ -320,6 +391,7 @@ final class CameraSession: ObservableObject {
                 guard let device = notification.object as? AVCaptureDevice else { return }
                 self?.sessionQueue.async {
                     guard let self else { return }
+                    let token = self.currentToken()
                     let usesDevice = self.session.inputs.contains { input in
                         (input as? AVCaptureDeviceInput)?.device.uniqueID == device.uniqueID
                     }
@@ -330,11 +402,12 @@ final class CameraSession: ObservableObject {
                     }
                     self.resetConfiguration()
 
+                    guard self.isCurrent(token) else { return }
                     if self.shouldRun {
-                        self.publish(.starting)
-                        self.runSessionIfNeeded()
+                        self.publish(.starting, token: token)
+                        self.runSessionIfNeeded(token: token)
                     } else {
-                        self.publish(.idle)
+                        self.publish(.idle, token: token)
                     }
                 }
             }
@@ -354,18 +427,38 @@ final class CameraSession: ObservableObject {
     private var shouldRun: Bool {
         requestLock.lock()
         defer { requestLock.unlock() }
-        return wantsToRun
+        return generation.wantsToRun
     }
 
-    private func setWantsToRun(_ value: Bool) {
+    private func beginStart() -> UInt64 {
         requestLock.lock()
-        wantsToRun = value
-        requestLock.unlock()
+        defer { requestLock.unlock() }
+        return generation.start()
     }
 
-    private func publish(_ newStatus: Status) {
+    private func beginStop() -> UInt64 {
+        requestLock.lock()
+        defer { requestLock.unlock() }
+        return generation.stop()
+    }
+
+    private func currentToken() -> UInt64 {
+        requestLock.lock()
+        defer { requestLock.unlock() }
+        return generation.token
+    }
+
+    private func isCurrent(_ token: UInt64) -> Bool {
+        requestLock.lock()
+        defer { requestLock.unlock() }
+        return generation.isCurrent(token)
+    }
+
+    private func publish(_ newStatus: Status, token: UInt64) {
+        guard isCurrent(token) else { return }
         DispatchQueue.main.async { [weak self] in
-            self?.status = newStatus
+            guard let self, self.isCurrent(token) else { return }
+            self.status = newStatus
         }
     }
 }

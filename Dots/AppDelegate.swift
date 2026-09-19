@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let initialSize = DotsLayout.panelSize(expansion: .none)
         let panel = FloatingPanel(
             contentRect: NSRect(origin: .zero, size: initialSize),
-            styleMask: [.borderless],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.isMovable = false
         panel.isMovableByWindowBackground = false
         panel.acceptsMouseMovedEvents = true
-        panel.becomesKeyOnlyIfNeeded = false
+        panel.becomesKeyOnlyIfNeeded = true
         panel.level = .statusBar
         panel.collectionBehavior = [
             .canJoinAllSpaces,
@@ -87,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } else if panel.isKeyWindow {
             panel.makeFirstResponder(nil)
+            panel.resignKey()
         }
     }
 
@@ -177,7 +178,7 @@ enum DotsMenu {
 
 private final class FloatingPanel: NSPanel {
     override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+    override var canBecomeMain: Bool { false }
 }
 
 final class DotsHostingView: NSHostingView<DotsView> {

@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreGraphics
 import XCTest
 @testable import Dots
@@ -219,6 +220,58 @@ final class CameraLogicTests: XCTestCase {
             "Waiting for camera permission"
         )
         XCTAssertEqual(CameraSession.Status.idle.accessibilityDescription, "Camera inactive")
+    }
+
+    func testStopInvalidatesAnInFlightStartToken() {
+        var generation = CameraGeneration()
+        let startToken = generation.start()
+        let stopToken = generation.stop()
+
+        XCTAssertFalse(generation.isCurrent(startToken))
+        XCTAssertTrue(generation.isCurrent(stopToken))
+        XCTAssertFalse(generation.wantsToRun)
+    }
+
+    func testReopenInvalidatesAQueuedStopToken() {
+        var generation = CameraGeneration()
+        _ = generation.start()
+        let stopToken = generation.stop()
+        let reopenToken = generation.start()
+
+        XCTAssertFalse(generation.isCurrent(stopToken))
+        XCTAssertTrue(generation.isCurrent(reopenToken))
+        XCTAssertTrue(generation.wantsToRun)
+    }
+
+    func testPreviewPresetPrefersVGAWhenAvailable() {
+        XCTAssertEqual(
+            CameraPreviewPreset.preferred { $0 == .vga640x480 || $0 == .high },
+            .vga640x480
+        )
+    }
+
+    func testPreviewPresetFallsBackWhenVGAIsUnavailable() {
+        XCTAssertEqual(
+            CameraPreviewPreset.preferred { $0 == .medium || $0 == .high },
+            .medium
+        )
+    }
+
+    func testMediaServicesResetRetriesOnce() {
+        let error = NSError(
+            domain: AVFoundationErrorDomain,
+            code: CameraRuntimeErrorPolicy.mediaServicesWereResetCode
+        )
+
+        XCTAssertTrue(CameraRuntimeErrorPolicy.shouldRetry(alreadyRetried: false, error: error))
+        XCTAssertFalse(CameraRuntimeErrorPolicy.shouldRetry(alreadyRetried: true, error: error))
+    }
+
+    func testOtherRuntimeErrorsDoNotRetry() {
+        let error = NSError(domain: AVFoundationErrorDomain, code: -11800)
+
+        XCTAssertFalse(CameraRuntimeErrorPolicy.shouldRetry(alreadyRetried: false, error: error))
+        XCTAssertFalse(CameraRuntimeErrorPolicy.isMediaServicesReset(nil))
     }
 }
 
