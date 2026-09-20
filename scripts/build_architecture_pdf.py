@@ -273,7 +273,7 @@ def story():
             ],
             [1.7 * inch, w - 1.7 * inch],
         ),
-        P("<b>Prototype status (September 2026).</b> The tree at <font face='Courier'>yaosamo/dots</font> is a working top-edge shell: Mirror + text Tasks, nonactivating panel, click-through around orbs, draggable 120 pt Mirror preview. It is <b>not</b> the full MVP. Magnetism, Escape, the Dot registry, Pomodoro, Red Pen, Screen → Text, Clipboard, voice tasks, and onboarding are still required. Two of the four orbs in the current build are placeholders and must be replaced by real catalog Dots, not kept as decoration."),
+        P("<b>Prototype status (September 2026).</b> The tree at <font face='Courier'>yaosamo/dots</font> is a working top-edge shell: registry-backed Mirror + text Tasks, stable-anchor nearest-Dot magnetism, nonactivating panel, click-through around orbs, and a draggable 120 pt Mirror preview. It is <b>not</b> the full MVP. Escape/presenter completion, multi-display behavior, Pomodoro, Red Pen, Screen → Text, Clipboard, voice tasks, and onboarding are still required. Unimplemented catalog Dots are not shown as decoration."),
         P("Target platform: macOS. Minimum: macOS 14. Enhanced local AI (Foundation Models, modern Speech APIs) is availability-gated on newer systems."),
     ]
 
@@ -298,7 +298,7 @@ def story():
         P("The first launch should double as configuration. Present the Dots themselves as an interactive selector: hovering or focusing a Dot reveals a compact preview/name, and selecting it adds the utility to the user's top-edge set. Avoid a long settings wizard."),
         P("<b>Recommended first-run defaults:</b> Mirror, Tasks, Pomodoro."),
         P("After onboarding, configuration remains available through a small settings view: add/remove/reorder Dots, timer defaults, clipboard history length, and permissions status."),
-        P("The current prototype hardcodes four orbs (Mirror, Tasks, two empty). That is a scaffolding shortcut. Replace the empty orbs with catalog features; do not ship unused decorative Dots."),
+        P("The current prototype launches with the implemented Mirror and Tasks descriptors. Add catalog Dots to the visible set only when their behavior is implemented; do not ship unused decorative Dots."),
         P("1.3 UX invariants", "h2"),
         table(
             ["Invariant", "Acceptance rule"],
@@ -641,7 +641,7 @@ TheDotsTests/
             ["#", "Checkpoint", "Status"],
             [
                 ["1", "Shell prototype: top-edge nonactivating NSPanel, orbs, correct positioning on one display, hover/click, click-through.", "Done"],
-                ["2", "Launcher system: 1–5 Dots, ordering, nearest-dot magnetism, feature presenter, Escape dismissal, multi-display positioning.", "Not started"],
+                ["2", "Launcher system: 1–5 Dots, ordering, nearest-dot magnetism, feature presenter, Escape dismissal, multi-display positioning.", "In progress (registry + magnetism)"],
                 ["3", "Mirror: permission + mirrored preview + stop on close. Draggable 120 pt circle; sprout hides when detached; generation-token lifecycle; 640×480 preset.", "Done (drag included)"],
                 ["4", "Pomodoro: timer state outside the panel, notification optional. Validates persistent background-ish state.", "Not started"],
                 ["5", "Tasks text-only (local persist, AppKit composer). Then voice transcription and task extraction as separate adapters.", "Text done; voice not started"],
@@ -660,7 +660,7 @@ TheDotsTests/
         table(
             ["Area", "Pass condition", "Now"],
             [
-                ["Launcher", "1–5 Dots at top edge, nearest Dot reacts magnetically, no visual jitter, clicks target reliably despite 16 pt orb.", "Fail — 4 hardcoded, hover-scale only, hit = orb"],
+                ["Launcher", "1–5 Dots at top edge, nearest Dot reacts magnetically, no visual jitter, clicks target reliably despite 16 pt orb.", "Partial — registry, stable magnetism, padded hits; settings/order pending"],
                 ["Focus", "Hovering/clicking non-text Dots does not activate The Dots or steal keyboard focus.", "Pass for non-text (prototype)"],
                 ["Escape", "Escape closes the open feature and returns to the prior app.", "Fail"],
                 ["Mirror", "Preview appears after permission, mirrored, camera stops when closed.", "Pass"],
@@ -742,7 +742,6 @@ def main():
         Path("/Users/personal/Downloads/The_Dots_macOS_Architecture.pdf"),
         Path("/Users/personal/Documents/Dots/The_Dots_macOS_Architecture.pdf"),
     ]
-    body = story()
     for dest in dests:
         dest.parent.mkdir(parents=True, exist_ok=True)
         doc = SimpleDocTemplate(
@@ -756,7 +755,7 @@ def main():
             author="yaosamo",
             subject="MVP implementation brief for Codex and Grok",
         )
-        doc.build(body, onFirstPage=header_footer, onLaterPages=header_footer)
+        doc.build(story(), onFirstPage=header_footer, onLaterPages=header_footer)
         print(dest)
 
 

@@ -24,6 +24,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Dots uses the camera to show your live selfie inside the first dot.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Dots copies recognized screen text to the clipboard.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>

@@ -5,37 +5,60 @@ enum DotExpansion: Equatable {
     case none
     case camera
     case tasks
+    case clipboard
+    case redPen
+    case screenToText
 }
-
 enum DotsLayout {
     static let nodeDiameter: CGFloat = 16
     static let cameraDiameter: CGFloat = 120
     static let nodeSpacing: CGFloat = 16
     static let horizontalPadding: CGFloat = 12
     static let verticalPadding: CGFloat = 8
-    static let stemThickness: CGFloat = 2
-    static let stemHitSlop: CGFloat = 4
+    static let dotHitSlop: CGFloat = 6
     static let hangingGap: CGFloat = 8
-    static let cameraDetachDistance: CGFloat = 8
-    static let taskListSize = CGSize(width: 200, height: 240)
+    static let taskListWidth: CGFloat = 300
+    static let taskListMinimumHeight: CGFloat = 168
+    static let taskListMaximumHeight: CGFloat = 420
+    static let taskListRowGrowth: CGFloat = 30
     static let taskCornerRadius: CGFloat = 16
+    static let taskControlHitSize: CGFloat = 24
+    static let clipboardSize = CGSize(width: 240, height: 220)
     static let glassInset: CGFloat = 12
 
-    private static var layoutOffsetX: CGFloat {
-        glassInset - (hangingRectInRowCoordinates(expansion: .tasks)?.minX ?? 0)
+    static func taskListSize(taskCount: Int) -> CGSize {
+        let rowCount = max(0, taskCount)
+        return CGSize(
+            width: taskListWidth,
+            height: min(
+                taskListMaximumHeight,
+                taskListMinimumHeight + (CGFloat(rowCount) * taskListRowGrowth)
+            )
+        )
     }
 
     static var rowContentSize: CGSize {
-        CGSize(
-            width: (nodeDiameter * 4) + (nodeSpacing * 3),
+        rowContentSize(dotCount: DotRegistry.defaultActiveIDs.count)
+    }
+
+    static func rowContentSize(dotCount: Int) -> CGSize {
+        let count = min(max(dotCount, 1), DotRegistry.maximumVisibleDots)
+        return CGSize(
+            width: (nodeDiameter * CGFloat(count))
+                + (nodeSpacing * CGFloat(max(0, count - 1))),
             height: nodeDiameter
         )
     }
 
     static var rowPanelSize: CGSize {
-        CGSize(
-            width: rowContentSize.width + (horizontalPadding * 2),
-            height: rowContentSize.height + (verticalPadding * 2)
+        rowPanelSize(dotCount: DotRegistry.defaultActiveIDs.count)
+    }
+
+    static func rowPanelSize(dotCount: Int) -> CGSize {
+        let content = rowContentSize(dotCount: dotCount)
+        return CGSize(
+            width: content.width + (horizontalPadding * 2),
+            height: content.height + (verticalPadding * 2)
         )
     }
 
@@ -47,136 +70,165 @@ enum DotsLayout {
         canvasSize(cameraOffset: .zero)
     }
 
-    static func extraLeft(cameraOffset: CGSize) -> CGFloat {
-        guard let hang = hangingRectInRowCoordinates(
+    static func extraLeft(
+        cameraOffset: CGSize,
+        dotIDs: [DotID] = DotRegistry.defaultActiveIDs
+    ) -> CGFloat {
+        guard let hang = rawHangingFrame(
             expansion: .camera,
-            cameraOffset: cameraOffset
+            cameraOffset: cameraOffset,
+            taskCount: 0,
+            dotIDs: dotIDs
         ) else {
             return 0
         }
-        return max(0, -(hang.minX + layoutOffsetX))
+        return max(0, -(hang.minX + baseLayoutOffsetX(dotIDs: dotIDs)))
     }
 
-    static func rowCenterX(cameraOffset: CGSize) -> CGFloat {
-        layoutOffsetX + extraLeft(cameraOffset: cameraOffset) + (rowPanelSize.width / 2)
+    static func rowCenterX(
+        cameraOffset: CGSize,
+        dotIDs: [DotID] = DotRegistry.defaultActiveIDs
+    ) -> CGFloat {
+        baseLayoutOffsetX(dotIDs: dotIDs)
+            + extraLeft(cameraOffset: cameraOffset, dotIDs: dotIDs)
+            + (rowPanelSize(dotCount: normalized(dotIDs).count).width / 2)
     }
 
-    static func canvasSize(cameraOffset: CGSize) -> CGSize {
-        let base = CGSize(
-            width: taskListSize.width + (glassInset * 2),
-            height: verticalPadding + nodeDiameter + hangingGap + taskListSize.height + glassInset
-        )
-        guard let hang = hangingFrame(expansion: .camera, cameraOffset: cameraOffset) else {
+    static func canvasSize(
+        cameraOffset: CGSize,
+        dotIDs: [DotID] = DotRegistry.defaultActiveIDs
+    ) -> CGSize {
+        let base = baseCanvasSize(dotIDs: dotIDs)
+        guard let hang = hangingFrame(
+            expansion: .camera,
+            cameraOffset: cameraOffset,
+            dotIDs: dotIDs
+        ) else {
             return base
         }
         return CGSize(
-            width: max(base.width + extraLeft(cameraOffset: cameraOffset), hang.maxX + glassInset),
+            width: max(
+                base.width + extraLeft(cameraOffset: cameraOffset, dotIDs: dotIDs),
+                hang.maxX + glassInset
+            ),
             height: max(base.height, hang.maxY + glassInset)
         )
     }
 
     static func nodeFrames(
         expansion: DotExpansion,
-        cameraOffset: CGSize = .zero
+        cameraOffset: CGSize = .zero,
+        dotIDs: [DotID] = DotRegistry.defaultActiveIDs
     ) -> [CGRect] {
-        collapsedNodeFrames().map {
-            $0.offsetBy(dx: layoutOffsetX + extraLeft(cameraOffset: cameraOffset), dy: 0)
+        let offsetX = baseLayoutOffsetX(dotIDs: dotIDs)
+            + extraLeft(cameraOffset: cameraOffset, dotIDs: dotIDs)
+        return rawNodeFrames(dotIDs: dotIDs).map {
+            $0.offsetBy(dx: offsetX, dy: 0)
         }
     }
 
     static func visibleNodeFrames(
         expansion: DotExpansion,
-        cameraOffset: CGSize = .zero
+        cameraOffset: CGSize = .zero,
+        dotIDs: [DotID] = DotRegistry.defaultActiveIDs
     ) -> [CGRect] {
-        let frames = nodeFrames(expansion: expansion, cameraOffset: cameraOffset)
-        guard let activeIndex = activeNodeIndex(expansion: expansion) else {
-            return frames
-        }
-        return frames.enumerated().compactMap { index, frame in
-            index == activeIndex ? nil : frame
-        }
+        nodeFrames(
+            expansion: expansion,
+            cameraOffset: cameraOffset,
+            dotIDs: dotIDs
+        )
     }
 
     static func hangingFrame(
         expansion: DotExpansion,
-        cameraOffset: CGSize = .zero
+        cameraOffset: CGSize = .zero,
+        taskCount: Int = 0,
+        dotIDs: [DotID] = DotRegistry.defaultActiveIDs
     ) -> CGRect? {
-        hangingRectInRowCoordinates(
+        rawHangingFrame(
             expansion: expansion,
-            cameraOffset: cameraOffset
+            cameraOffset: cameraOffset,
+            taskCount: taskCount,
+            dotIDs: dotIDs
         )?.offsetBy(
-            dx: layoutOffsetX + extraLeft(cameraOffset: cameraOffset),
+            dx: baseLayoutOffsetX(dotIDs: dotIDs)
+                + extraLeft(cameraOffset: cameraOffset, dotIDs: dotIDs),
             dy: 0
         )
-    }
-
-    static func isCameraDetached(_ offset: CGSize) -> Bool {
-        (offset.width * offset.width) + (offset.height * offset.height)
-            >= cameraDetachDistance * cameraDetachDistance
-    }
-
-    static func stemRects(
-        expansion: DotExpansion,
-        cameraOffset: CGSize = .zero
-    ) -> [CGRect] {
-        let destination = hangingFrame(expansion: expansion, cameraOffset: cameraOffset)
-        let activeIndex = activeNodeIndex(expansion: expansion)
-        return nodeFrames(expansion: expansion, cameraOffset: cameraOffset)
-            .enumerated()
-            .map { index, frame in
-                if expansion == .camera, index == 0, isCameraDetached(cameraOffset) {
-                    return .zero
-                }
-                let endY = index == activeIndex ? destination?.minY ?? frame.midY : frame.midY
-                return CGRect(
-                    x: frame.midX - (stemThickness / 2),
-                    y: 0,
-                    width: stemThickness,
-                    height: endY
-                )
-            }
     }
 
     static func containsInteractiveContent(
         _ point: CGPoint,
         expansion: DotExpansion,
-        cameraOffset: CGSize = .zero
+        cameraOffset: CGSize = .zero,
+        taskCount: Int = 0,
+        dotIDs: [DotID] = DotRegistry.defaultActiveIDs
     ) -> Bool {
-        if visibleNodeFrames(expansion: expansion, cameraOffset: cameraOffset)
-            .contains(where: { circleContains($0, point) })
-        {
+        if dotID(
+            at: point,
+            expansion: expansion,
+            cameraOffset: cameraOffset,
+            dotIDs: dotIDs
+        ) != nil {
             return true
         }
 
-        if let hang = hangingFrame(expansion: expansion, cameraOffset: cameraOffset) {
+        if let hang = hangingFrame(
+            expansion: expansion,
+            cameraOffset: cameraOffset,
+            taskCount: taskCount,
+            dotIDs: dotIDs
+        ) {
             switch expansion {
             case .camera:
                 if circleContains(hang, point) { return true }
-            case .tasks:
+            case .tasks, .clipboard:
                 if roundedRectContains(hang, radius: taskCornerRadius, point: point) {
                     return true
                 }
-            case .none:
+            case .none, .redPen, .screenToText:
                 break
             }
         }
 
-        return stemRects(expansion: expansion, cameraOffset: cameraOffset).contains { stem in
-            guard stem.width > 0, stem.height > 0 else { return false }
-            return stem.insetBy(dx: -stemHitSlop, dy: 0).contains(point)
+        return false
+    }
+
+    static func dotID(
+        at point: CGPoint,
+        expansion: DotExpansion,
+        cameraOffset: CGSize = .zero,
+        dotIDs: [DotID] = DotRegistry.defaultActiveIDs
+    ) -> DotID? {
+        let ids = normalized(dotIDs)
+        let frames = nodeFrames(
+            expansion: expansion,
+            cameraOffset: cameraOffset,
+            dotIDs: ids
+        )
+        for index in ids.indices {
+            let dotTarget = frames[index].insetBy(dx: -dotHitSlop, dy: -dotHitSlop)
+            if circleContains(dotTarget, point) {
+                return ids[index]
+            }
         }
+        return nil
     }
 
     static func panelFrame(
         visibleFrame: CGRect,
         cameraOffset: CGSize = .zero,
         previousCameraOffset: CGSize = .zero,
-        keepingTopOf existingFrame: CGRect? = nil
+        keepingTopOf existingFrame: CGRect? = nil,
+        dotIDs: [DotID] = DotRegistry.defaultActiveIDs
     ) -> CGRect {
-        let size = canvasSize(cameraOffset: cameraOffset)
-        let rowCenter = rowCenterX(cameraOffset: cameraOffset)
+        let size = canvasSize(cameraOffset: cameraOffset, dotIDs: dotIDs)
+        let rowCenter = rowCenterX(cameraOffset: cameraOffset, dotIDs: dotIDs)
         if let existingFrame {
-            let previousRowCenter = rowCenterX(cameraOffset: previousCameraOffset)
+            let previousRowCenter = rowCenterX(
+                cameraOffset: previousCameraOffset,
+                dotIDs: dotIDs
+            )
             return CGRect(
                 x: existingFrame.minX + previousRowCenter - rowCenter,
                 y: existingFrame.maxY - size.height,
@@ -192,30 +244,67 @@ enum DotsLayout {
         )
     }
 
-    private static func collapsedNodeFrames() -> [CGRect] {
+    private static func normalized(_ dotIDs: [DotID]) -> [DotID] {
+        DotRegistry.visibleIDs(from: dotIDs, implemented: Set(DotID.allCases))
+    }
+
+    private static func rawNodeFrames(dotIDs: [DotID]) -> [CGRect] {
         var x = horizontalPadding
-        return (0..<4).map { _ in
-            let frame = CGRect(
+        return normalized(dotIDs).map { _ in
+            defer { x += nodeDiameter + nodeSpacing }
+            return CGRect(
                 x: x,
                 y: verticalPadding,
                 width: nodeDiameter,
                 height: nodeDiameter
             )
-            x += nodeDiameter + nodeSpacing
-            return frame
         }
     }
 
-    private static func hangingRectInRowCoordinates(
+    private static func baseLayoutOffsetX(dotIDs: [DotID]) -> CGFloat {
+        glassInset - staticBounds(dotIDs: dotIDs).minX
+    }
+
+    private static func baseCanvasSize(dotIDs: [DotID]) -> CGSize {
+        let bounds = staticBounds(dotIDs: dotIDs)
+        return CGSize(
+            width: bounds.width + (glassInset * 2),
+            height: bounds.maxY + glassInset
+        )
+    }
+
+    private static func staticBounds(dotIDs: [DotID]) -> CGRect {
+        let ids = normalized(dotIDs)
+        var bounds = CGRect(origin: .zero, size: rowPanelSize(dotCount: ids.count))
+        for expansion in [DotExpansion.camera, .tasks, .clipboard] {
+            if let frame = rawHangingFrame(
+                expansion: expansion,
+                cameraOffset: .zero,
+                taskCount: 100,
+                dotIDs: ids
+            ) {
+                bounds = bounds.union(frame)
+            }
+        }
+        return bounds
+    }
+
+    private static func rawHangingFrame(
         expansion: DotExpansion,
-        cameraOffset: CGSize = .zero
+        cameraOffset: CGSize,
+        taskCount: Int,
+        dotIDs: [DotID]
     ) -> CGRect? {
-        let nodes = collapsedNodeFrames()
+        let ids = normalized(dotIDs)
+        guard let index = activeNodeIndex(expansion: expansion, dotIDs: ids) else {
+            return nil
+        }
+        let dot = rawNodeFrames(dotIDs: ids)[index]
+
         switch expansion {
         case .none:
             return nil
         case .camera:
-            let dot = nodes[0]
             var frame = CGRect(
                 x: dot.midX - (cameraDiameter / 2),
                 y: dot.maxY + hangingGap,
@@ -228,25 +317,45 @@ enum DotsLayout {
             }
             return frame
         case .tasks:
-            let dot = nodes[1]
+            let size = taskListSize(taskCount: taskCount)
             return CGRect(
-                x: dot.midX - (taskListSize.width / 2),
+                x: dot.midX - (size.width / 2),
                 y: dot.maxY + hangingGap,
-                width: taskListSize.width,
-                height: taskListSize.height
+                width: size.width,
+                height: size.height
             )
+        case .clipboard:
+            return CGRect(
+                x: dot.midX - (clipboardSize.width / 2),
+                y: dot.maxY + hangingGap,
+                width: clipboardSize.width,
+                height: clipboardSize.height
+            )
+        case .redPen, .screenToText:
+            return nil
         }
     }
 
-    private static func activeNodeIndex(expansion: DotExpansion) -> Int? {
+    private static func activeNodeIndex(
+        expansion: DotExpansion,
+        dotIDs: [DotID]
+    ) -> Int? {
+        let id: DotID?
         switch expansion {
         case .none:
-            nil
+            id = nil
         case .camera:
-            0
+            id = .mirror
         case .tasks:
-            1
+            id = .tasks
+        case .clipboard:
+            id = .clipboard
+        case .redPen:
+            id = .redPen
+        case .screenToText:
+            id = .screenToText
         }
+        return id.flatMap { normalized(dotIDs).firstIndex(of: $0) }
     }
 
     private static func circleContains(_ rect: CGRect, _ point: CGPoint) -> Bool {
@@ -282,80 +391,66 @@ enum DotsLayout {
     }
 }
 
-enum DotsMotion {
-    static let hoverInDuration = 0.08
-    static let hoverOutDuration = 0.12
-    static let pressInDuration = 0.05
-    static let pressOutDuration = 0.09
-    static let selectionDuration = 0.26
-    static let contentInDuration = 0.12
-    static let contentInDelay = 0.08
-    static let contentOutDuration = 0.08
-
-    static var selectionAnimation: Animation {
-        .spring(duration: selectionDuration, bounce: 0.08)
-    }
-}
-
-private enum MorphSurfaceID: Hashable, Sendable {
-    case camera
-    case tasks
-}
-
 struct DotsView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var pointer: LauncherPointerState
     @StateObject private var camera = CameraSession()
     @StateObject private var tasks = TaskStore()
+    @StateObject private var clipboard = ClipboardStore()
     @State private var expansion: DotExpansion = .none
-    @State private var hoveredDot: Int?
     @State private var cameraOffset: CGSize = .zero
     @State private var cameraDragStart: CGSize = .zero
-    @Namespace private var morphNamespace
 
-    let onExpansionChange: (DotExpansion, CGSize) -> Void
+    let onExpansionChange: (DotExpansion, CGSize, Int) -> Void
+
+    private var dotIDs: [DotID] {
+        DotRegistry.visibleIDs(from: DotRegistry.defaultActiveIDs)
+    }
+
+    init(
+        pointer: LauncherPointerState,
+        onExpansionChange: @escaping (DotExpansion, CGSize, Int) -> Void
+    ) {
+        _pointer = ObservedObject(wrappedValue: pointer)
+        self.onExpansionChange = onExpansionChange
+    }
 
     var body: some View {
-        let stems = DotsLayout.stemRects(expansion: expansion, cameraOffset: cameraOffset)
-        let firstNode = DotsLayout.nodeFrames(expansion: expansion, cameraOffset: cameraOffset)[0]
-        let canvas = DotsLayout.canvasSize(cameraOffset: cameraOffset)
+        let canvas = DotsLayout.canvasSize(cameraOffset: cameraOffset, dotIDs: dotIDs)
 
-        morphContainer {
-            ZStack(alignment: .topLeading) {
-                ForEach(stems.indices, id: \.self) { index in
-                    let stem = stems[index]
-                    if stem.width > 0, stem.height > 0 {
-                        Rectangle()
-                            .fill(.black)
-                            .frame(width: stem.width, height: stem.height)
-                            .offset(x: stem.minX, y: stem.minY)
-                    }
-                }
+        ZStack(alignment: .topLeading) {
+            if expansion == .camera,
+               let hang = DotsLayout.hangingFrame(
+                   expansion: .camera,
+                   cameraOffset: cameraOffset,
+                   dotIDs: dotIDs
+               )
+            {
+                expandedCamera
+                    .frame(width: hang.width, height: hang.height)
+                    .offset(x: hang.minX, y: hang.minY)
+            }
 
-                HStack(alignment: .top, spacing: DotsLayout.nodeSpacing) {
-                    cameraSlot
-                    taskSlot
-                    decorativeDot
-                    decorativeDot
-                }
-                .padding(.leading, firstNode.minX)
-                .padding(.top, DotsLayout.verticalPadding)
+            if expansion == .tasks,
+               let hang = DotsLayout.hangingFrame(
+                   expansion: .tasks,
+                   taskCount: tasks.items.count,
+                   dotIDs: dotIDs
+               )
+            {
+                expandedTasks
+                    .frame(width: hang.width, height: hang.height)
+                    .offset(x: hang.minX, y: hang.minY)
+            }
 
-                if expansion == .camera,
-                   let hang = DotsLayout.hangingFrame(
-                       expansion: .camera,
-                       cameraOffset: cameraOffset
-                   )
-                {
-                    expandedCamera
-                        .frame(width: hang.width, height: hang.height)
-                        .offset(x: hang.minX, y: hang.minY)
-                }
-
-                if expansion == .tasks, let hang = DotsLayout.hangingFrame(expansion: .tasks) {
-                    expandedTasks
-                        .frame(width: hang.width, height: hang.height)
-                        .offset(x: hang.minX, y: hang.minY)
-                }
+            if expansion == .clipboard,
+               let hang = DotsLayout.hangingFrame(
+                   expansion: .clipboard,
+                   dotIDs: dotIDs
+               )
+            {
+                expandedClipboard
+                    .frame(width: hang.width, height: hang.height)
+                    .offset(x: hang.minX, y: hang.minY)
             }
         }
         .frame(
@@ -364,172 +459,85 @@ struct DotsView: View {
             alignment: .topLeading
         )
         .onAppear {
-            onExpansionChange(.none, .zero)
+            notifyExpansionChange(.none, cameraOffset: .zero)
         }
         .onChange(of: expansion) { _, newExpansion in
-            onExpansionChange(newExpansion, cameraOffset)
+            notifyExpansionChange(newExpansion, cameraOffset: cameraOffset)
         }
         .onChange(of: cameraOffset) { _, newOffset in
-            onExpansionChange(expansion, newOffset)
+            notifyExpansionChange(expansion, cameraOffset: newOffset)
+        }
+        .onChange(of: tasks.items.count) { _, _ in
+            notifyExpansionChange(expansion, cameraOffset: cameraOffset)
+        }
+        .onChange(of: pointer.activationSequence) { _, _ in
+            guard let id = pointer.requestedActivation else { return }
+            activate(id)
+        }
+        .onChange(of: pointer.dismissalSequence) { _, _ in
+            guard expansion != .none else { return }
+            setExpansion(.none)
+        }
+        .onChange(of: pointer.cameraOffset) { _, newOffset in
+            cameraOffset = newOffset
+            cameraDragStart = newOffset
         }
         .onDisappear {
             camera.stop()
         }
     }
 
-    @ViewBuilder
-    private var cameraSlot: some View {
-        if expansion == .camera {
-            Color.clear
-                .frame(
-                    width: DotsLayout.nodeDiameter,
-                    height: DotsLayout.nodeDiameter
-                )
-        } else {
-            Button(action: toggleCamera) {
-                MorphSurface(
-                    id: .camera,
-                    namespace: morphNamespace,
-                    reduceMotion: reduceMotion,
-                    shape: Circle()
-                ) {
-                    Color.clear
-                }
-                .frame(
-                    width: DotsLayout.nodeDiameter,
-                    height: DotsLayout.nodeDiameter
-                )
-                .contentShape(Circle())
-            }
-            .buttonStyle(DotPressStyle(reduceMotion: reduceMotion))
-            .scaleEffect(hoveredDot == 0 ? 1.04 : 1)
-            .animation(hoverAnimation(for: 0), value: hoveredDot == 0)
-            .onHover { hovering in
-                hoveredDot = hovering ? 0 : nil
-            }
-            .accessibilityLabel("Open selfie camera")
-            .accessibilityValue(camera.accessibilityDescription)
-        }
-    }
-
     private var expandedCamera: some View {
-        Button(action: toggleCamera) {
-            MorphSurface(
-                id: .camera,
-                namespace: morphNamespace,
-                reduceMotion: reduceMotion,
-                shape: Circle()
-            ) {
-                ZStack {
-                    CameraPreview(session: camera.session)
-                        .opacity(camera.status == .running ? 1 : 0)
+        FeatureSurface(shape: Circle()) {
+            ZStack {
+                CameraPreview(session: camera.session)
+                    .opacity(camera.status == .running ? 1 : 0)
 
-                    cameraStatusOverlay
+                cameraStatusOverlay
 
-                    Circle()
-                        .stroke(.white.opacity(0.16), lineWidth: 0.75)
-                }
-                .clipShape(Circle())
-                .allowsHitTesting(false)
-                .transition(contentTransition)
+                Circle()
+                    .stroke(.white.opacity(0.16), lineWidth: 0.75)
             }
-            .contentShape(Circle())
+            .clipShape(Circle())
         }
-        .buttonStyle(DotPressStyle(reduceMotion: reduceMotion))
-        .onHover { hovering in
-            if hovering {
-                NSCursor.openHand.set()
-            } else {
-                NSCursor.arrow.set()
-            }
-        }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 4)
-                .onChanged { value in
-                    NSCursor.closedHand.set()
-                    cameraOffset = CGSize(
-                        width: cameraDragStart.width + value.translation.width,
-                        height: cameraDragStart.height + value.translation.height
-                    )
-                }
-                .onEnded { _ in
-                    cameraDragStart = cameraOffset
-                    NSCursor.openHand.set()
-                }
-        )
+        .contentShape(Circle())
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Close selfie camera")
         .accessibilityValue(camera.accessibilityDescription)
-        .accessibilityHint("Drag to place the camera. The sprout hides once it leaves the row.")
-    }
-
-    @ViewBuilder
-    private var taskSlot: some View {
-        if expansion == .tasks {
-            Color.clear
-                .frame(
-                    width: DotsLayout.nodeDiameter,
-                    height: DotsLayout.nodeDiameter
-                )
-        } else {
-            Button(action: toggleTasks) {
-                MorphSurface(
-                    id: .tasks,
-                    namespace: morphNamespace,
-                    reduceMotion: reduceMotion,
-                    shape: RoundedRectangle(
-                        cornerRadius: DotsLayout.taskCornerRadius,
-                        style: .continuous
-                    )
-                ) {
-                    Color.clear
-                }
-                .frame(
-                    width: DotsLayout.nodeDiameter,
-                    height: DotsLayout.nodeDiameter
-                )
-                .contentShape(Circle())
-            }
-            .buttonStyle(DotPressStyle(reduceMotion: reduceMotion))
-            .scaleEffect(hoveredDot == 1 ? 1.04 : 1)
-            .animation(hoverAnimation(for: 1), value: hoveredDot == 1)
-            .onHover { hovering in
-                hoveredDot = hovering ? 1 : nil
-            }
-            .accessibilityLabel("Open task list")
-            .accessibilityValue("\(tasks.items.filter { !$0.isDone }.count) open")
-        }
+        .accessibilityHint("Drag to place the camera. Click to close.")
     }
 
     private var expandedTasks: some View {
-        MorphSurface(
-            id: .tasks,
-            namespace: morphNamespace,
-            reduceMotion: reduceMotion,
+        FeatureSurface(
             shape: RoundedRectangle(
                 cornerRadius: DotsLayout.taskCornerRadius,
                 style: .continuous
-            )
+            ),
+            backingOpacity: 0.72
         ) {
-            TaskListView(store: tasks, onClose: toggleTasks)
-                .transition(contentTransition)
+            TaskListView(store: tasks)
         }
         .contentShape(
             RoundedRectangle(cornerRadius: DotsLayout.taskCornerRadius, style: .continuous)
         )
+        .environment(\.colorScheme, .dark)
     }
 
-    private var decorativeDot: some View {
-        Button(action: {}) {
-            Circle()
-                .fill(.black)
-                .frame(
-                    width: DotsLayout.nodeDiameter,
-                    height: DotsLayout.nodeDiameter
-                )
-                .contentShape(Circle())
+    private var expandedClipboard: some View {
+        FeatureSurface(
+            shape: RoundedRectangle(
+                cornerRadius: DotsLayout.taskCornerRadius,
+                style: .continuous
+            ),
+            backingOpacity: 0.72
+        ) {
+            ClipboardListView(store: clipboard)
         }
-        .buttonStyle(DotPressStyle(reduceMotion: reduceMotion))
-        .accessibilityHidden(true)
+        .contentShape(
+            RoundedRectangle(cornerRadius: DotsLayout.taskCornerRadius, style: .continuous)
+        )
+        .environment(\.colorScheme, .dark)
     }
 
     @ViewBuilder
@@ -548,40 +556,6 @@ struct DotsView: View {
         }
     }
 
-    private func hoverAnimation(for index: Int) -> Animation? {
-        reduceMotion
-            ? nil
-            : .easeOut(
-                duration: hoveredDot == index
-                    ? DotsMotion.hoverInDuration
-                    : DotsMotion.hoverOutDuration
-            )
-    }
-
-    private var contentTransition: AnyTransition {
-        guard !reduceMotion else { return .identity }
-        return .asymmetric(
-            insertion: .opacity.animation(
-                .easeOut(duration: DotsMotion.contentInDuration)
-                    .delay(DotsMotion.contentInDelay)
-            ),
-            removal: .opacity.animation(.easeIn(duration: DotsMotion.contentOutDuration))
-        )
-    }
-
-    @ViewBuilder
-    private func morphContainer<Content: View>(
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: DotsLayout.hangingGap) {
-                content()
-            }
-        } else {
-            content()
-        }
-    }
-
     private func toggleCamera() {
         setExpansion(expansion == .camera ? .none : .camera)
     }
@@ -590,43 +564,59 @@ struct DotsView: View {
         setExpansion(expansion == .tasks ? .none : .tasks)
     }
 
+    private func toggleClipboard() {
+        setExpansion(expansion == .clipboard ? .none : .clipboard)
+    }
+
+    private func activate(_ id: DotID) {
+        switch id {
+        case .mirror:
+            toggleCamera()
+        case .tasks:
+            toggleTasks()
+        case .clipboard:
+            toggleClipboard()
+        case .redPen:
+            setExpansion(expansion == .redPen ? .none : .redPen)
+        case .screenToText:
+            setExpansion(expansion == .screenToText ? .none : .screenToText)
+        }
+    }
+
     private func setExpansion(_ newExpansion: DotExpansion) {
         if newExpansion == .camera {
             camera.start()
-        } else {
-            camera.stop()
-            cameraOffset = .zero
-            cameraDragStart = .zero
+            expansion = newExpansion
+            return
         }
 
-        if reduceMotion {
-            expansion = newExpansion
-        } else {
-            withAnimation(DotsMotion.selectionAnimation) {
-                expansion = newExpansion
-            }
-        }
+        camera.stop()
+        expansion = newExpansion
+        cameraOffset = .zero
+        cameraDragStart = .zero
+        pointer.setCameraOffset(.zero)
+    }
+
+    private func notifyExpansionChange(
+        _ expansion: DotExpansion,
+        cameraOffset: CGSize
+    ) {
+        onExpansionChange(expansion, cameraOffset, tasks.items.count)
     }
 }
 
-private struct MorphSurface<SurfaceShape: Shape, Content: View>: View {
-    let id: MorphSurfaceID
-    let namespace: Namespace.ID
-    let reduceMotion: Bool
+private struct FeatureSurface<SurfaceShape: Shape, Content: View>: View {
     let shape: SurfaceShape
+    let backingOpacity: Double
     let content: Content
 
     init(
-        id: MorphSurfaceID,
-        namespace: Namespace.ID,
-        reduceMotion: Bool,
         shape: SurfaceShape,
+        backingOpacity: Double = 0,
         @ViewBuilder content: () -> Content
     ) {
-        self.id = id
-        self.namespace = namespace
-        self.reduceMotion = reduceMotion
         self.shape = shape
+        self.backingOpacity = backingOpacity
         self.content = content()
     }
 
@@ -634,17 +624,13 @@ private struct MorphSurface<SurfaceShape: Shape, Content: View>: View {
     var body: some View {
         if #available(macOS 26.0, *) {
             ZStack {
-                Color.clear
+                shape.fill(.black.opacity(backingOpacity))
                 content
             }
                 .glassEffect(
-                    .regular
-                        .tint(.black.opacity(0.76))
-                        .interactive(),
+                    .regular.tint(.black.opacity(0.76)),
                     in: shape
                 )
-                .glassEffectID(id, in: namespace)
-                .glassEffectTransition(reduceMotion ? .identity : .matchedGeometry)
                 .overlay {
                     shape.stroke(.white.opacity(0.14), lineWidth: 0.75)
                 }
@@ -658,7 +644,6 @@ private struct MorphSurface<SurfaceShape: Shape, Content: View>: View {
                     .overlay {
                         shape.stroke(.white.opacity(0.12), lineWidth: 0.75)
                     }
-                    .matchedGeometryEffect(id: id, in: namespace)
 
                 content
             }
@@ -669,63 +654,56 @@ private struct MorphSurface<SurfaceShape: Shape, Content: View>: View {
 struct TaskListView: View {
     @ObservedObject var store: TaskStore
     @State private var hoveredTaskID: UUID?
-    let onClose: () -> Void
+
+    private var panelSize: CGSize {
+        DotsLayout.taskListSize(taskCount: store.items.count)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("Tasks")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.92))
-
-                Spacer()
-
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.58))
-                        .frame(width: 18, height: 18)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close task list")
-            }
-
+        ScrollViewReader { scrollProxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 6) {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    Text("Tasks")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.92))
+
                     if store.items.isEmpty {
                         Text("No tasks")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.45))
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.62))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 4)
                     } else {
-                        ForEach(store.items) { item in
+                        ForEach(store.visibleItems) { item in
                             taskRow(item)
+                                .id(item.id)
                         }
                     }
+
+                    TaskComposerField(
+                        text: $store.draft,
+                        placeholder: store.editingTaskID == nil ? "Add a task" : "Edit task",
+                        onSubmit: store.addDraft,
+                        onTextChange: store.clearTaskSelection,
+                        onBackspaceAtStart: store.handleBackspaceOnEmptyDraft,
+                        onMoveSelection: store.moveTaskSelection,
+                        onEditSelected: store.editSelectedTask
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24)
                 }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            HStack(spacing: 8) {
-                TaskComposerField(text: $store.draft, onSubmit: store.addDraft)
-                    .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
-
-                Button(action: store.addDraft) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 22, height: 22)
-                        .contentShape(Rectangle())
+            .onChange(of: store.selectedTaskID) { _, selectedTaskID in
+                guard let selectedTaskID else { return }
+                withAnimation(.easeOut(duration: 0.12)) {
+                    scrollProxy.scrollTo(selectedTaskID, anchor: .center)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Add task")
             }
         }
-        .padding(12)
         .frame(
-            width: DotsLayout.taskListSize.width,
-            height: DotsLayout.taskListSize.height,
+            width: panelSize.width,
+            height: panelSize.height,
             alignment: .topLeading
         )
         .contentShape(
@@ -740,50 +718,147 @@ struct TaskListView: View {
             } label: {
                 ZStack {
                     Circle()
-                        .stroke(.white.opacity(item.isDone ? 0.35 : 0.9), lineWidth: 1.5)
+                        .stroke(.white.opacity(item.isDone ? 0.55 : 0.9), lineWidth: 1.5)
                     if item.isDone {
                         Circle()
                             .fill(.white.opacity(0.9))
                             .padding(3)
                     }
                 }
-                .frame(width: 12, height: 12)
+                .frame(width: 14, height: 14)
+                .frame(
+                    width: DotsLayout.taskControlHitSize,
+                    height: DotsLayout.taskControlHitSize
+                )
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(item.isDone ? "Mark \(item.title) incomplete" : "Complete \(item.title)")
 
             Text(item.title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(item.isDone ? 0.4 : 0.95))
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(item.isDone ? 0.62 : 0.95))
                 .strikethrough(item.isDone)
                 .lineLimit(2)
 
             Spacer(minLength: 4)
 
-            Button {
-                store.remove(item.id)
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.white.opacity(hoveredTaskID == item.id ? 0.7 : 0.28))
-                    .frame(width: 12, height: 12)
-                    .contentShape(Rectangle())
+            if hoveredTaskID == item.id {
+                Button {
+                    store.remove(item.id)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .frame(
+                            width: DotsLayout.taskControlHitSize,
+                            height: DotsLayout.taskControlHitSize
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Delete \(item.title)")
+            } else {
+                Color.clear
+                    .frame(
+                        width: DotsLayout.taskControlHitSize,
+                        height: DotsLayout.taskControlHitSize
+                    )
+                    .accessibilityHidden(true)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Delete \(item.title)")
         }
+        .frame(minHeight: 24)
+        .padding(.horizontal, 4)
+        .background {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(
+                    .white.opacity(store.selectedTaskID == item.id ? 0.12 : 0)
+                )
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(
+                    .white.opacity(store.selectedTaskID == item.id ? 0.16 : 0),
+                    lineWidth: 0.75
+                )
+        }
+        .contentShape(Rectangle())
         .onHover { hovering in
             hoveredTaskID = hovering ? item.id : nil
         }
+        .accessibilityAction(named: "Delete task") {
+            store.remove(item.id)
+        }
+        .accessibilityAddTraits(store.selectedTaskID == item.id ? .isSelected : [])
+    }
+}
+
+private struct ClipboardListView: View {
+    @ObservedObject var store: ClipboardStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Clipboard")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
+
+            if store.items.isEmpty {
+                Text("Copy something to see it here")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 8)
+                Spacer(minLength: 0)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(store.items, id: \.self) { item in
+                            Button {
+                                store.copy(item)
+                            } label: {
+                                Text(item)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.92))
+                                    .lineLimit(2)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 8)
+                                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Copy clipboard item")
+                        }
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .frame(
+            width: DotsLayout.clipboardSize.width,
+            height: DotsLayout.clipboardSize.height,
+            alignment: .topLeading
+        )
     }
 }
 
 private struct TaskComposerField: NSViewRepresentable {
     @Binding var text: String
+    var placeholder: String
     var onSubmit: () -> Void
+    var onTextChange: () -> Void
+    var onBackspaceAtStart: () -> Bool
+    var onMoveSelection: (TaskSelectionDirection) -> Bool
+    var onEditSelected: () -> Bool
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, onSubmit: onSubmit)
+        Coordinator(
+            text: $text,
+            onSubmit: onSubmit,
+            onTextChange: onTextChange,
+            onBackspaceAtStart: onBackspaceAtStart,
+            onMoveSelection: onMoveSelection,
+            onEditSelected: onEditSelected
+        )
     }
 
     func makeNSView(context: Context) -> TaskComposerHost {
@@ -791,17 +866,21 @@ private struct TaskComposerField: NSViewRepresentable {
         host.field.delegate = context.coordinator
         host.field.target = context.coordinator
         host.field.action = #selector(Coordinator.submit(_:))
-        DispatchQueue.main.async {
-            host.window?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            host.window?.makeFirstResponder(host.field)
+        host.field.onDeleteBackwardWhenEmpty = { [weak coordinator = context.coordinator] in
+            coordinator?.handleBackspaceAtStart()
         }
+        host.updatePlaceholder(placeholder)
         return host
     }
 
     func updateNSView(_ nsView: TaskComposerHost, context: Context) {
         context.coordinator.text = $text
         context.coordinator.onSubmit = onSubmit
+        context.coordinator.onTextChange = onTextChange
+        context.coordinator.onBackspaceAtStart = onBackspaceAtStart
+        context.coordinator.onMoveSelection = onMoveSelection
+        context.coordinator.onEditSelected = onEditSelected
+        nsView.updatePlaceholder(placeholder)
         let editor = nsView.field.currentEditor()
         let isEditing = editor != nil && nsView.window?.firstResponder === editor
         if nsView.field.stringValue != text {
@@ -817,15 +896,56 @@ private struct TaskComposerField: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var text: Binding<String>
         var onSubmit: () -> Void
+        var onTextChange: () -> Void
+        var onBackspaceAtStart: () -> Bool
+        var onMoveSelection: (TaskSelectionDirection) -> Bool
+        var onEditSelected: () -> Bool
 
-        init(text: Binding<String>, onSubmit: @escaping () -> Void) {
+        init(
+            text: Binding<String>,
+            onSubmit: @escaping () -> Void,
+            onTextChange: @escaping () -> Void,
+            onBackspaceAtStart: @escaping () -> Bool,
+            onMoveSelection: @escaping (TaskSelectionDirection) -> Bool,
+            onEditSelected: @escaping () -> Bool
+        ) {
             self.text = text
             self.onSubmit = onSubmit
+            self.onTextChange = onTextChange
+            self.onBackspaceAtStart = onBackspaceAtStart
+            self.onMoveSelection = onMoveSelection
+            self.onEditSelected = onEditSelected
         }
 
         func controlTextDidChange(_ obj: Notification) {
             guard let field = obj.object as? NSTextField else { return }
             text.wrappedValue = field.stringValue
+            onTextChange()
+        }
+
+        func control(
+            _ control: NSControl,
+            textView: NSTextView,
+            doCommandBy commandSelector: Selector
+        ) -> Bool {
+            guard let field = control as? FocusableTextField else {
+                return false
+            }
+
+            switch commandSelector {
+            case #selector(NSResponder.deleteBackward(_:)):
+                return field.handleDeleteBackward(in: textView)
+            case #selector(NSResponder.moveUp(_:)):
+                return onMoveSelection(.up)
+            case #selector(NSResponder.moveDown(_:)):
+                return onMoveSelection(.down)
+            case #selector(NSResponder.insertNewline(_:)):
+                guard onEditSelected() else { return false }
+                field.replaceText(text.wrappedValue, in: textView)
+                return true
+            default:
+                return false
+            }
         }
 
         @objc func submit(_ sender: NSTextField) {
@@ -833,6 +953,11 @@ private struct TaskComposerField: NSViewRepresentable {
             onSubmit()
             sender.stringValue = text.wrappedValue
             sender.currentEditor()?.string = text.wrappedValue
+        }
+
+        func handleBackspaceAtStart() -> String? {
+            guard onBackspaceAtStart() else { return nil }
+            return text.wrappedValue
         }
     }
 }
@@ -846,21 +971,29 @@ private final class TaskComposerHost: NSView {
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 11, weight: .medium)
+        field.font = .systemFont(ofSize: 13, weight: .medium)
         field.textColor = .white
         field.appearance = NSAppearance(named: .darkAqua)
-        field.placeholderAttributedString = NSAttributedString(
-            string: "Add a task",
-            attributes: [
-                .foregroundColor: NSColor.white.withAlphaComponent(0.4),
-                .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-            ]
+        field.setAccessibilityLabel("New task")
+        field.setAccessibilityHelp(
+            "Type a task and press Return to save it. Use the arrow keys to select a task and Return to edit it. Press Delete in an empty field to edit the previous task."
         )
+        updatePlaceholder("Add a task")
         field.cell?.wraps = false
         field.cell?.isScrollable = true
         field.cell?.usesSingleLineMode = true
         field.refusesFirstResponder = false
         addSubview(field)
+    }
+
+    func updatePlaceholder(_ placeholder: String) {
+        field.placeholderAttributedString = NSAttributedString(
+            string: placeholder,
+            attributes: [
+                .foregroundColor: NSColor.white.withAlphaComponent(0.58),
+                .font: NSFont.systemFont(ofSize: 13, weight: .medium),
+            ]
+        )
     }
 
     @available(*, unavailable)
@@ -874,47 +1007,72 @@ private final class TaskComposerHost: NSView {
     }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: 18)
+        NSSize(width: NSView.noIntrinsicMetric, height: 24)
     }
 }
 
-private final class FocusableTextField: NSTextField {
+final class FocusableTextField: NSTextField {
+    var onDeleteBackwardWhenEmpty: (() -> String?)?
+
     override var acceptsFirstResponder: Bool { true }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.focusForTaskEntry()
+        }
+    }
+
     override func mouseDown(with event: NSEvent) {
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
-        window?.makeFirstResponder(self)
+        focusForTaskEntry()
         super.mouseDown(with: event)
     }
 
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 51,
+           handleDeleteBackward(in: currentEditor() as? NSTextView) {
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    fileprivate func handleDeleteBackward(in editor: NSTextView?) -> Bool {
+        let currentText = editor?.string ?? stringValue
+        guard currentText.isEmpty,
+              let replacement = onDeleteBackwardWhenEmpty?()
+        else {
+            return false
+        }
+
+        replaceText(replacement, in: editor)
+        return true
+    }
+
+    fileprivate func replaceText(_ replacement: String, in editor: NSTextView?) {
+        stringValue = replacement
+        editor?.string = replacement
+        editor?.setSelectedRange(
+            NSRange(location: replacement.utf16.count, length: 0)
+        )
+    }
+
     override func becomeFirstResponder() -> Bool {
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         window?.makeKeyAndOrderFront(nil)
         let accepted = super.becomeFirstResponder()
         if accepted, let editor = currentEditor() as? NSTextView {
+            editor.allowsUndo = true
             editor.insertionPointColor = .white
             editor.textColor = .white
         }
         return accepted
     }
-}
 
-private struct DotPressStyle: ButtonStyle {
-    let reduceMotion: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1)
-            .animation(
-                reduceMotion
-                    ? nil
-                    : .easeOut(
-                        duration: configuration.isPressed
-                            ? DotsMotion.pressInDuration
-                            : DotsMotion.pressOutDuration
-                    ),
-                value: configuration.isPressed
-            )
+    private func focusForTaskEntry() {
+        guard let window else { return }
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(self)
     }
 }

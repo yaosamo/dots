@@ -13,6 +13,9 @@
 		200000000000000000000005 /* CameraPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000005 /* CameraPreview.swift */; };
 		200000000000000000000006 /* DotsLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000008 /* DotsLayoutTests.swift */; };
 		200000000000000000000007 /* TaskStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000000B /* TaskStore.swift */; };
+		200000000000000000000008 /* LauncherCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000000C /* LauncherCore.swift */; };
+		200000000000000000000009 /* LauncherCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000000D /* LauncherCoreTests.swift */; };
+		20000000000000000000000A /* MVPFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000000E /* MVPFeatures.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -31,6 +34,9 @@
 		300000000000000000000004 /* CameraSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraSession.swift; sourceTree = "<group>"; };
 		300000000000000000000005 /* CameraPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreview.swift; sourceTree = "<group>"; };
 		30000000000000000000000B /* TaskStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskStore.swift; sourceTree = "<group>"; };
+		30000000000000000000000C /* LauncherCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherCore.swift; sourceTree = "<group>"; };
+		30000000000000000000000D /* LauncherCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherCoreTests.swift; sourceTree = "<group>"; };
+		30000000000000000000000E /* MVPFeatures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MVPFeatures.swift; sourceTree = "<group>"; };
 		300000000000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		300000000000000000000007 /* Dots.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Dots.entitlements; sourceTree = "<group>"; };
 		300000000000000000000008 /* DotsLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotsLayoutTests.swift; sourceTree = "<group>"; };
@@ -69,10 +75,12 @@
 			isa = PBXGroup;
 			children = (
 				300000000000000000000002 /* AppDelegate.swift */,
+				30000000000000000000000C /* LauncherCore.swift */,
 				300000000000000000000003 /* DotsView.swift */,
 				300000000000000000000004 /* CameraSession.swift */,
 				300000000000000000000005 /* CameraPreview.swift */,
 				30000000000000000000000B /* TaskStore.swift */,
+				30000000000000000000000E /* MVPFeatures.swift */,
 				300000000000000000000006 /* Info.plist */,
 				300000000000000000000007 /* Dots.entitlements */,
 			);
@@ -83,6 +91,7 @@
 			isa = PBXGroup;
 			children = (
 				300000000000000000000008 /* DotsLayoutTests.swift */,
+				30000000000000000000000D /* LauncherCoreTests.swift */,
 			);
 			path = DotsTests;
 			sourceTree = "<group>";
@@ -195,10 +204,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				200000000000000000000002 /* AppDelegate.swift in Sources */,
+				200000000000000000000008 /* LauncherCore.swift in Sources */,
 				200000000000000000000003 /* DotsView.swift in Sources */,
 				200000000000000000000004 /* CameraSession.swift in Sources */,
 				200000000000000000000005 /* CameraPreview.swift in Sources */,
 				200000000000000000000007 /* TaskStore.swift in Sources */,
+				20000000000000000000000A /* MVPFeatures.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -207,6 +218,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				200000000000000000000006 /* DotsLayoutTests.swift in Sources */,
+				200000000000000000000009 /* LauncherCoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

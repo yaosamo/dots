@@ -216,11 +216,14 @@ final class CameraSession: ObservableObject {
     func stop() {
         let token = beginStop()
         sessionQueue.async { [weak self] in
-            guard let self, self.isCurrent(token) else { return }
+            guard let self else { return }
             if self.session.isRunning {
                 self.session.stopRunning()
             }
-            self.publish(.idle, token: token)
+            self.resetConfiguration()
+            if self.isCurrent(token) {
+                self.publish(.idle, token: token)
+            }
         }
     }
 
@@ -230,26 +233,42 @@ final class CameraSession: ObservableObject {
         }
     }
 
-    private func runSessionIfNeeded(token: UInt64) {
+    private func runSessionIfNeeded(token: UInt64, attempt: Int = 0) {
         guard isCurrent(token), shouldRun else { return }
 
         do {
-            try configureIfNeeded()
-            guard isCurrent(token), shouldRun else { return }
-            if !session.isRunning {
-                session.startRunning()
+            if session.isRunning {
+                session.stopRunning()
             }
+            resetConfiguration()
+            try configureIfNeeded()
             guard isCurrent(token), shouldRun else {
-                if session.isRunning {
-                    session.stopRunning()
-                }
+                resetConfiguration()
                 return
             }
-            publish(.running, token: token)
+
+            session.startRunning()
+            if session.isRunning {
+                publish(.running, token: token)
+                return
+            }
+
+            retryStart(token: token, attempt: attempt)
         } catch CameraError.noDevice {
             publish(.unavailable, token: token)
         } catch {
+            retryStart(token: token, attempt: attempt)
+        }
+    }
+
+    private func retryStart(token: UInt64, attempt: Int) {
+        guard attempt < 4 else {
             publish(.failed, token: token)
+            return
+        }
+        publish(.starting, token: token)
+        sessionQueue.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.runSessionIfNeeded(token: token, attempt: attempt + 1)
         }
     }
 
@@ -357,7 +376,13 @@ final class CameraSession: ObservableObject {
                     guard let self else { return }
                     let token = self.currentToken()
                     guard self.isCurrent(token), self.shouldRun else { return }
-                    self.publish(.failed, token: token)
+                    self.publish(.starting, token: token)
+                    self.sessionQueue.asyncAfter(deadline: .now() + 0.2) {
+                        guard self.isCurrent(token), self.shouldRun else { return }
+                        if !self.session.isRunning {
+                            self.runSessionIfNeeded(token: token)
+                        }
+                    }
                 }
             }
         )

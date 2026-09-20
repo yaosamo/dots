@@ -6,9 +6,22 @@ struct DotTask: Identifiable, Codable, Equatable {
     var isDone: Bool
 }
 
+enum TaskSelectionDirection {
+    case up
+    case down
+}
+
 final class TaskStore: ObservableObject {
     @Published private(set) var items: [DotTask]
-    @Published var draft: String = ""
+    @Published var draft: String = "" {
+        didSet {
+            if draft != oldValue {
+                selectedTaskID = nil
+            }
+        }
+    }
+    @Published private(set) var editingTaskID: UUID? = nil
+    @Published private(set) var selectedTaskID: UUID? = nil
 
     private let defaults: UserDefaults
     private let storageKey: String
@@ -34,8 +47,92 @@ final class TaskStore: ObservableObject {
     }
 
     func addDraft() {
-        guard add(draft) != nil else { return }
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        if let editingTaskID,
+           let index = items.firstIndex(where: { $0.id == editingTaskID }) {
+            items[index].title = trimmed
+            self.editingTaskID = nil
+            persist()
+            draft = ""
+            return
+        }
+
+        guard add(trimmed) != nil else { return }
         draft = ""
+    }
+
+    var visibleItems: [DotTask] {
+        items.filter { $0.id != editingTaskID }
+    }
+
+    @discardableResult
+    func moveTaskSelection(_ direction: TaskSelectionDirection) -> Bool {
+        let candidates = visibleItems
+        guard !candidates.isEmpty else {
+            selectedTaskID = nil
+            return false
+        }
+
+        guard let selectedTaskID,
+              let currentIndex = candidates.firstIndex(where: { $0.id == selectedTaskID })
+        else {
+            self.selectedTaskID = direction == .up ? candidates.last?.id : candidates.first?.id
+            return true
+        }
+
+        let nextIndex: Int
+        switch direction {
+        case .up:
+            nextIndex = max(candidates.startIndex, currentIndex - 1)
+        case .down:
+            nextIndex = min(candidates.index(before: candidates.endIndex), currentIndex + 1)
+        }
+        self.selectedTaskID = candidates[nextIndex].id
+        return true
+    }
+
+    func clearTaskSelection() {
+        selectedTaskID = nil
+    }
+
+    @discardableResult
+    func editSelectedTask() -> Bool {
+        guard let selectedTaskID,
+              let selectedTask = visibleItems.first(where: { $0.id == selectedTaskID })
+        else {
+            self.selectedTaskID = nil
+            return false
+        }
+
+        self.selectedTaskID = nil
+        editingTaskID = selectedTask.id
+        draft = selectedTask.title
+        return true
+    }
+
+    @discardableResult
+    func handleBackspaceOnEmptyDraft() -> Bool {
+        guard draft.isEmpty else { return false }
+
+        if let editingTaskID {
+            self.editingTaskID = nil
+            items.removeAll { $0.id == editingTaskID }
+            persist()
+            _ = recallPreviousTask()
+            return true
+        }
+
+        return recallPreviousTask()
+    }
+
+    private func recallPreviousTask() -> Bool {
+        guard let previous = items.last else { return false }
+        selectedTaskID = nil
+        editingTaskID = previous.id
+        draft = previous.title
+        return true
     }
 
     func toggle(_ id: UUID) {
@@ -48,6 +145,13 @@ final class TaskStore: ObservableObject {
         let before = items.count
         items.removeAll { $0.id == id }
         guard items.count != before else { return }
+        if editingTaskID == id {
+            editingTaskID = nil
+            draft = ""
+        }
+        if selectedTaskID == id {
+            selectedTaskID = nil
+        }
         persist()
     }
 
