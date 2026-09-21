@@ -11,7 +11,8 @@ enum DotExpansion: Equatable {
 }
 enum DotsLayout {
     static let nodeDiameter: CGFloat = 16
-    static let cameraDiameter: CGFloat = 120
+    static let cameraDiameter: CGFloat = 160
+    static let launchCadence: TimeInterval = 0.08
     static let nodeSpacing: CGFloat = 16
     static let horizontalPadding: CGFloat = 12
     static let verticalPadding: CGFloat = 8
@@ -244,6 +245,15 @@ enum DotsLayout {
         )
     }
 
+    static func launchStartFrame(docked: CGRect, canvasHeight: CGFloat) -> CGRect {
+        CGRect(
+            x: docked.minX,
+            y: canvasHeight + nodeDiameter,
+            width: docked.width,
+            height: docked.height
+        )
+    }
+
     private static func normalized(_ dotIDs: [DotID]) -> [DotID] {
         DotRegistry.visibleIDs(from: dotIDs, implemented: Set(DotID.allCases))
     }
@@ -307,7 +317,7 @@ enum DotsLayout {
         case .camera:
             var frame = CGRect(
                 x: dot.midX - (cameraDiameter / 2),
-                y: dot.maxY + hangingGap,
+                y: dot.maxY,
                 width: cameraDiameter,
                 height: cameraDiameter
             )
@@ -427,6 +437,19 @@ struct DotsView: View {
             {
                 expandedCamera
                     .frame(width: hang.width, height: hang.height)
+                    .mask {
+                        if pointer.cameraReveal,
+                           let mask = pointer.cameraMaskFrame {
+                            Circle()
+                                .frame(width: mask.width, height: mask.height)
+                                .position(
+                                    x: mask.midX - hang.minX,
+                                    y: mask.midY - hang.minY
+                                )
+                        } else {
+                            Color.clear
+                        }
+                    }
                     .offset(x: hang.minX, y: hang.minY)
             }
 
@@ -483,6 +506,7 @@ struct DotsView: View {
             cameraDragStart = newOffset
         }
         .onDisappear {
+            pointer.setCameraMaskFrame(nil)
             camera.stop()
         }
     }
@@ -491,6 +515,7 @@ struct DotsView: View {
         FeatureSurface(shape: Circle()) {
             ZStack {
                 CameraPreview(session: camera.session)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .opacity(camera.status == .running ? 1 : 0)
 
                 cameraStatusOverlay
@@ -586,11 +611,10 @@ struct DotsView: View {
     private func setExpansion(_ newExpansion: DotExpansion) {
         if newExpansion == .camera {
             camera.start()
-            expansion = newExpansion
-            return
+        } else if expansion == .camera {
+            camera.stop()
         }
 
-        camera.stop()
         expansion = newExpansion
         cameraOffset = .zero
         cameraDragStart = .zero

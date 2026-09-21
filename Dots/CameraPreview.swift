@@ -18,12 +18,17 @@ final class CameraPreviewView: NSView {
     let previewLayer = AVCaptureVideoPreviewLayer()
     private var startObserver: NSObjectProtocol?
 
+    override var isFlipped: Bool { true }
+
     init(session: AVCaptureSession) {
         super.init(frame: .zero)
         wantsLayer = true
+        layer = CALayer()
+        layer?.masksToBounds = true
         previewLayer.session = session
         previewLayer.videoGravity = .resizeAspectFill
-        layer = previewLayer
+        previewLayer.contentsGravity = .resizeAspectFill
+        layer?.addSublayer(previewLayer)
         applyMirroring()
 
         startObserver = NotificationCenter.default.addObserver(
@@ -31,6 +36,7 @@ final class CameraPreviewView: NSView {
             object: session,
             queue: .main
         ) { [weak self] _ in
+            self?.layoutPreview()
             self?.applyMirroring()
         }
     }
@@ -48,8 +54,15 @@ final class CameraPreviewView: NSView {
 
     override func layout() {
         super.layout()
-        previewLayer.frame = bounds
+        layoutPreview()
         applyMirroring()
+    }
+
+    private func layoutPreview() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        previewLayer.frame = bounds
+        CATransaction.commit()
     }
 
     func applyMirroring() {

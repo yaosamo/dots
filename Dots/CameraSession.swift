@@ -81,6 +81,11 @@ struct CameraGeneration: Equatable {
         return token
     }
 
+    mutating func startIfNeeded() -> UInt64? {
+        guard !wantsToRun else { return nil }
+        return start()
+    }
+
     mutating func stop() -> UInt64 {
         token += 1
         wantsToRun = false
@@ -109,19 +114,25 @@ enum CameraPreviewPreset {
 enum CameraRuntimeErrorPolicy {
     /// `AVErrorMediaServicesWereReset`; not exposed as `AVError.Code` on macOS.
     static let mediaServicesWereResetCode = -11819
+    /// `AVErrorUnknown`; emitted by the camera graph during a rapid reopen.
+    static let operationFailedCode = -11800
 
-    static func isMediaServicesReset(_ error: Error?) -> Bool {
+    static func isRecoverable(_ error: Error?) -> Bool {
         let nsError = error as NSError?
         return nsError?.domain == AVFoundationErrorDomain
-            && nsError?.code == mediaServicesWereResetCode
+            && [mediaServicesWereResetCode, operationFailedCode].contains(nsError?.code)
     }
 
     static func shouldRetry(alreadyRetried: Bool, error: Error?) -> Bool {
-        !alreadyRetried && isMediaServicesReset(error)
+        !alreadyRetried && isRecoverable(error)
     }
 }
 
 final class CameraSession: ObservableObject {
+    // Keep a close reversible through the camera's collapse animation. Once
+    // AVCaptureSession.stopRunning() begins, AVFoundation cannot cancel it.
+    private static let reversibleStopDelay: TimeInterval = 1.5
+
     enum Status: Equatable {
         case idle
         case requestingPermission
@@ -189,9 +200,10 @@ final class CameraSession: ObservableObject {
     }
 
     func start() {
-        let token = beginStart()
+        guard let token = beginStart() else { return }
 
-        switch CameraAuthorization.action(for: AVCaptureDevice.authorizationStatus(for: .video)) {
+        let authorization = AVCaptureDevice.authorizationStatus(for: .video)
+        switch CameraAuthorization.action(for: authorization) {
         case .start:
             publish(.starting, token: token)
             startSessionOnQueue(token: token)
@@ -215,15 +227,23 @@ final class CameraSession: ObservableObject {
 
     func stop() {
         let token = beginStop()
-        sessionQueue.async { [weak self] in
+        sessionQueue.asyncAfter(deadline: .now() + Self.reversibleStopDelay) { [weak self] in
             guard let self else { return }
+
+            // A reopen cancels the pending stop before the capture session is touched.
+            // In that case, leave the already-running capture session alone.
+            guard self.isCurrent(token), !self.shouldRun else {
+                return
+            }
             if self.session.isRunning {
                 self.session.stopRunning()
             }
+
+            guard self.isCurrent(token), !self.shouldRun else { return }
+            // A full close gets a fresh device input on the next open. Some
+            // cameras will not resume a retained input after stopRunning().
             self.resetConfiguration()
-            if self.isCurrent(token) {
-                self.publish(.idle, token: token)
-            }
+            self.publish(.idle, token: token)
         }
     }
 
@@ -238,12 +258,11 @@ final class CameraSession: ObservableObject {
 
         do {
             if session.isRunning {
-                session.stopRunning()
+                publish(.running, token: token)
+                return
             }
-            resetConfiguration()
             try configureIfNeeded()
             guard isCurrent(token), shouldRun else {
-                resetConfiguration()
                 return
             }
 
@@ -351,12 +370,16 @@ final class CameraSession: ObservableObject {
                     guard let self else { return }
                     let token = self.currentToken()
                     guard self.isCurrent(token), self.shouldRun else { return }
-                    self.resetConfiguration()
                     if CameraRuntimeErrorPolicy.shouldRetry(
                         alreadyRetried: self.retriedMediaResetToken == token,
                         error: error
                     ) {
                         self.retriedMediaResetToken = token
+                        if self.session.isRunning {
+                            self.session.stopRunning()
+                        }
+                        self.resetConfiguration()
+                        guard self.isCurrent(token), self.shouldRun else { return }
                         self.publish(.starting, token: token)
                         self.runSessionIfNeeded(token: token)
                     } else {
@@ -455,10 +478,10 @@ final class CameraSession: ObservableObject {
         return generation.wantsToRun
     }
 
-    private func beginStart() -> UInt64 {
+    private func beginStart() -> UInt64? {
         requestLock.lock()
         defer { requestLock.unlock() }
-        return generation.start()
+        return generation.startIfNeeded()
     }
 
     private func beginStop() -> UInt64 {

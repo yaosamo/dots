@@ -8,9 +8,25 @@ import XCTest
 final class DotsLayoutTests: XCTestCase {
     private let twoDots: [DotID] = [.mirror, .tasks]
 
+    @MainActor
+    func testCameraMaskTracksTheExpandingDotFrame() {
+        let pointer = LauncherPointerState()
+        let dot = CGRect(x: 122, y: 8, width: 16, height: 16)
+        let camera = CGRect(x: 50, y: 24, width: 160, height: 160)
+
+        pointer.setCameraReveal(true)
+        pointer.setCameraMaskFrame(dot)
+        XCTAssertTrue(pointer.cameraReveal)
+        XCTAssertEqual(pointer.cameraMaskFrame, dot)
+
+        pointer.setCameraMaskFrame(camera)
+        XCTAssertEqual(pointer.cameraMaskFrame, camera)
+    }
+
     func testRequestedDotAndCameraDiameters() {
         XCTAssertEqual(DotsLayout.nodeDiameter, 16)
-        XCTAssertEqual(DotsLayout.cameraDiameter, 120)
+        XCTAssertEqual(DotsLayout.cameraDiameter, 160)
+        XCTAssertEqual(DotsLayout.launchCadence, 0.08)
         XCTAssertEqual(
             DotsLayout.taskListSize(taskCount: 0),
             CGSize(width: 300, height: 168)
@@ -62,19 +78,26 @@ final class DotsLayoutTests: XCTestCase {
         )
     }
 
-    func testCameraPanelHangsBelowAVisible16PointDot() {
-        XCTAssertEqual(
-            DotsLayout.hangingFrame(expansion: .camera, dotIDs: twoDots),
-            CGRect(x: 70, y: 32, width: 120, height: 120)
-        )
-        XCTAssertEqual(
-            DotsLayout.hangingFrame(expansion: .camera, dotIDs: twoDots)?.midX,
-            DotsLayout.nodeFrames(expansion: .camera, dotIDs: twoDots)[0].midX
-        )
+    func testCameraExpandsFromTheVisible16PointDot() throws {
+        let camera = try XCTUnwrap(DotsLayout.hangingFrame(expansion: .camera, dotIDs: twoDots))
+        let mirrorDot = DotsLayout.nodeFrames(expansion: .camera, dotIDs: twoDots)[0]
+
+        XCTAssertEqual(camera.midX, mirrorDot.midX)
+        XCTAssertEqual(camera.minY, mirrorDot.maxY)
+        XCTAssertEqual(camera.size, CGSize(width: 160, height: 160))
         XCTAssertTrue(
             DotsLayout.visibleNodeFrames(expansion: .camera, dotIDs: twoDots)
                 .contains(DotsLayout.nodeFrames(expansion: .camera, dotIDs: twoDots)[0])
         )
+    }
+
+    func testLaunchFrameStartsAboveThePanelWithoutChangingDotSize() {
+        let docked = CGRect(x: 80, y: 12, width: 16, height: 16)
+        let start = DotsLayout.launchStartFrame(docked: docked, canvasHeight: 40)
+
+        XCTAssertEqual(start.minX, docked.minX)
+        XCTAssertEqual(start.minY, 56)
+        XCTAssertEqual(start.size, docked.size)
     }
 
     func testTaskPanelHangsBelowAVisible16PointDot() {
@@ -123,7 +146,14 @@ final class DotsLayoutTests: XCTestCase {
         XCTAssertFalse(DotsLayout.containsInteractiveContent(CGPoint(x: 2, y: 2), expansion: .none, dotIDs: twoDots))
         XCTAssertFalse(DotsLayout.containsInteractiveContent(CGPoint(x: 222, y: 16), expansion: .none, dotIDs: twoDots))
         XCTAssertFalse(DotsLayout.containsInteractiveContent(CGPoint(x: 2, y: 2), expansion: .camera, dotIDs: twoDots))
-        XCTAssertFalse(DotsLayout.containsInteractiveContent(CGPoint(x: 216, y: 20), expansion: .camera, dotIDs: twoDots))
+        let camera = try! XCTUnwrap(DotsLayout.hangingFrame(expansion: .camera, dotIDs: twoDots))
+        XCTAssertFalse(
+            DotsLayout.containsInteractiveContent(
+                CGPoint(x: camera.maxX + 2, y: camera.midY),
+                expansion: .camera,
+                dotIDs: twoDots
+            )
+        )
         XCTAssertFalse(DotsLayout.containsInteractiveContent(CGPoint(x: 24, y: 16), expansion: .tasks, dotIDs: twoDots))
     }
 
@@ -181,9 +211,9 @@ final class DotsLayoutTests: XCTestCase {
 
         for state in [DotExpansion.none, .camera, .tasks] {
             let sourceIndex = state == .camera ? 0 : 1
-            let sourceX = frame.minX + DotsLayout.nodeFrames(expansion: state, dotIDs: twoDots)[sourceIndex].midX
+            let source = DotsLayout.nodeFrames(expansion: state, dotIDs: twoDots)[sourceIndex]
             if let destination = DotsLayout.hangingFrame(expansion: state, dotIDs: twoDots) {
-                XCTAssertEqual(frame.minX + destination.midX, sourceX)
+                XCTAssertEqual(frame.minX + destination.midX, frame.minX + source.midX)
             }
         }
     }
@@ -205,7 +235,7 @@ final class DotsLayoutTests: XCTestCase {
 
         XCTAssertEqual(dragged.maxY, docked.maxY)
         XCTAssertEqual(draggedDot, dockedDot)
-        XCTAssertGreaterThan(dragged.width, docked.width)
+        XCTAssertGreaterThanOrEqual(dragged.width, docked.width)
     }
 
     func testDraggingCameraDownExtendsTheCanvas() {
@@ -216,7 +246,7 @@ final class DotsLayoutTests: XCTestCase {
         )
         XCTAssertEqual(
             DotsLayout.hangingFrame(expansion: .camera, cameraOffset: offset, dotIDs: twoDots)?.minY,
-            432
+            424
         )
     }
 
@@ -290,6 +320,46 @@ final class DotsLayoutTests: XCTestCase {
                 dotIDs: twoDots
             )
         )
+    }
+}
+
+@MainActor
+final class DotOrbViewTests: XCTestCase {
+    func testOrbHostsASwiftUICircleThatResizesWithItsFrame() {
+        let orb = DotOrbView(frame: .zero)
+        orb.frame = CGRect(x: 0, y: 0, width: 160, height: 160)
+        orb.layoutSubtreeIfNeeded()
+
+        XCTAssertEqual(orb.subviews.count, 1)
+        XCTAssertEqual(orb.subviews[0].frame, orb.bounds)
+    }
+}
+
+@MainActor
+final class CameraTransitionHitAnchorViewTests: XCTestCase {
+    func testArmKeepsTheLastCameraClickInteractive() {
+        let anchor = CameraTransitionHitAnchorView(frame: .zero)
+        let click = CGPoint(x: 120, y: 240)
+
+        anchor.arm(at: click)
+
+        XCTAssertFalse(anchor.isHidden)
+        XCTAssertEqual(anchor.frame.size, CGSize(width: 28, height: 28))
+        XCTAssertEqual(CGPoint(x: anchor.frame.midX, y: anchor.frame.midY), click)
+        XCTAssertTrue(anchor.contains(click))
+        XCTAssertGreaterThan(anchor.layer?.backgroundColor?.alpha ?? 0, 0)
+        XCTAssertLessThan(anchor.layer?.backgroundColor?.alpha ?? 1, 0.01)
+    }
+
+    func testDisarmRestoresClickThroughOutsideTheAnimation() {
+        let anchor = CameraTransitionHitAnchorView(frame: .zero)
+        let click = CGPoint(x: 120, y: 240)
+        anchor.arm(at: click)
+
+        anchor.disarm()
+
+        XCTAssertTrue(anchor.isHidden)
+        XCTAssertFalse(anchor.contains(click))
     }
 }
 
@@ -368,6 +438,17 @@ final class CameraLogicTests: XCTestCase {
         XCTAssertFalse(generation.isCurrent(startToken))
         XCTAssertTrue(generation.isCurrent(stopToken))
         XCTAssertFalse(generation.wantsToRun)
+    }
+
+    func testRepeatedStartDoesNotCreateAnotherCameraLaunchRequest() {
+        var generation = CameraGeneration()
+        let firstStart = generation.startIfNeeded()
+        let repeatedStart = generation.startIfNeeded()
+
+        XCTAssertEqual(firstStart, 1)
+        XCTAssertNil(repeatedStart)
+        XCTAssertTrue(generation.isCurrent(1))
+        XCTAssertTrue(generation.wantsToRun)
     }
 
     func testReopenInvalidatesAQueuedStopToken() {
