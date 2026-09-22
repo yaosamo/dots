@@ -118,8 +118,6 @@ final class LauncherPointerState: ObservableObject {
     @Published private(set) var activationSequence = 0
     @Published private(set) var dismissalSequence = 0
     @Published private(set) var cameraOffset: CGSize = .zero
-    @Published private(set) var cameraReveal = false
-    @Published private(set) var cameraMaskFrame: CGRect?
     private(set) var requestedActivation: DotID?
     private var lastActivationAt: TimeInterval = 0
 
@@ -148,15 +146,6 @@ final class LauncherPointerState: ObservableObject {
         cameraOffset = offset
     }
 
-    func setCameraReveal(_ revealed: Bool) {
-        guard cameraReveal != revealed else { return }
-        cameraReveal = revealed
-    }
-
-    func setCameraMaskFrame(_ frame: CGRect?) {
-        guard cameraMaskFrame != frame else { return }
-        cameraMaskFrame = frame
-    }
 }
 
 enum DotMagnetism {

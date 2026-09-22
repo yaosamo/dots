@@ -9,32 +9,258 @@ enum DotExpansion: Equatable {
     case redPen
     case screenToText
 }
+
+enum DotMaterialStyle: String, CaseIterable, Codable, Identifiable {
+    case liquid
+    case regular
+    case thin
+    case solid
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .liquid:
+            return "Liquid"
+        case .regular:
+            return "Regular"
+        case .thin:
+            return "Thin"
+        case .solid:
+            return "Solid"
+        }
+    }
+}
+
+final class DotAppearanceSettings: ObservableObject {
+    static let shared = DotAppearanceSettings()
+    static let materialKey = "dot.material"
+
+    @Published var material: DotMaterialStyle {
+        didSet {
+            defaults.set(material.rawValue, forKey: Self.materialKey)
+        }
+    }
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let storedMaterial = defaults.string(forKey: Self.materialKey)
+            .flatMap(DotMaterialStyle.init(rawValue:))
+        material = storedMaterial ?? .liquid
+    }
+}
+
+struct DotOrbMaterialView: View {
+    let style: DotMaterialStyle
+
+    @ViewBuilder
+    var body: some View {
+        switch style {
+        case .liquid:
+            if #available(macOS 26.0, *) {
+                Circle()
+                    .fill(.black.opacity(0.2))
+                    .glassEffect(
+                        .regular.tint(.black.opacity(0.76)),
+                        in: Circle()
+                    )
+                    .overlay {
+                        Circle().stroke(.white.opacity(0.2), lineWidth: 0.5)
+                    }
+            } else {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        Circle().fill(.black.opacity(0.55))
+                    }
+                    .overlay {
+                        Circle().stroke(.white.opacity(0.2), lineWidth: 0.5)
+                    }
+            }
+        case .regular:
+            Circle()
+                .fill(.regularMaterial)
+                .overlay {
+                    Circle().stroke(.white.opacity(0.2), lineWidth: 0.5)
+                }
+        case .thin:
+            Circle()
+                .fill(.thinMaterial)
+                .overlay {
+                    Circle().stroke(.white.opacity(0.2), lineWidth: 0.5)
+                }
+        case .solid:
+            Circle().fill(.black)
+        }
+    }
+}
+
+enum CameraPanelStyle: Equatable {
+    case rectangle
+    case circle
+
+    static let transitionDuration: TimeInterval = 0.2
+
+    var size: CGSize {
+        size(for: .standard)
+    }
+
+    func size(for sizeMode: CameraPanelSize) -> CGSize {
+        let width: CGFloat = sizeMode == .standard ? 240 : 160
+
+        switch self {
+        case .rectangle:
+            return CGSize(width: width, height: width * 1.5)
+        case .circle:
+            return CGSize(width: width, height: width)
+        }
+    }
+
+    var panelSize: CGSize {
+        size
+    }
+
+    func panelSize(for sizeMode: CameraPanelSize) -> CGSize {
+        size(for: sizeMode)
+    }
+
+    var surfaceAspectRatio: CGFloat {
+        size.width / size.height
+    }
+
+    var minimumSurfaceSize: CGSize {
+        minimumSurfaceSize(for: .standard)
+    }
+
+    func minimumSurfaceSize(for sizeMode: CameraPanelSize) -> CGSize {
+        let size = size(for: sizeMode)
+        return CGSize(
+            width: size.width,
+            height: size.height
+        )
+    }
+
+    var minimumPanelSize: CGSize {
+        minimumSurfaceSize
+    }
+
+    func minimumPanelSize(for sizeMode: CameraPanelSize) -> CGSize {
+        minimumSurfaceSize(for: sizeMode)
+    }
+
+    var nextSymbolName: String {
+        switch self {
+        case .rectangle:
+            return "circle"
+        case .circle:
+            return "rectangle"
+        }
+    }
+
+    var toggleAccessibilityLabel: String {
+        switch self {
+        case .rectangle:
+            return "Use circular camera"
+        case .circle:
+            return "Use rectangular camera"
+        }
+    }
+}
+
+enum CameraPanelSize: Equatable {
+    case standard
+    case small
+
+    var nextSymbolName: String {
+        switch self {
+        case .standard:
+            return "arrow.down.right.and.arrow.up.left"
+        case .small:
+            return "arrow.up.left.and.arrow.down.right"
+        }
+    }
+
+    var toggleAccessibilityLabel: String {
+        switch self {
+        case .standard:
+            return "Use smaller camera"
+        case .small:
+            return "Use full-size camera"
+        }
+    }
+}
+
+@MainActor
+final class CameraPanelModel: ObservableObject {
+    @Published var style: CameraPanelStyle = .circle
+    @Published var sizeMode: CameraPanelSize = .standard
+    @Published var isTransitioning = false
+
+    func toggleStyle() {
+        style = style == .circle ? .rectangle : .circle
+    }
+
+    func toggleSize() {
+        sizeMode = sizeMode == .standard ? .small : .standard
+    }
+
+    func resetStyle() {
+        style = .circle
+        sizeMode = .standard
+        isTransitioning = false
+    }
+}
+
 enum DotsLayout {
     static let nodeDiameter: CGFloat = 16
     static let cameraDiameter: CGFloat = 160
+    static let cameraPanelSize = CameraPanelStyle.circle.size
+    static let cameraPanelGap: CGFloat = 16
+    static let cameraPanelCornerRadius: CGFloat = 18
     static let launchCadence: TimeInterval = 0.08
     static let nodeSpacing: CGFloat = 16
     static let horizontalPadding: CGFloat = 12
     static let verticalPadding: CGFloat = 8
-    static let dotHitSlop: CGFloat = 6
+    static let dotHitSlop: CGFloat = 12
+    static let cameraControlSize: CGFloat = 32
+    static let cameraControlGap: CGFloat = 8
+    static let cameraControlEdgePadding: CGFloat = 16
+    static let cameraControlStackHeight =
+        (cameraControlSize * 3) + (cameraControlGap * 2) + cameraControlEdgePadding
+    static let cameraMinimumSurfaceWidth: CGFloat = 240
     static let hangingGap: CGFloat = 8
-    static let taskListWidth: CGFloat = 300
-    static let taskListMinimumHeight: CGFloat = 168
-    static let taskListMaximumHeight: CGFloat = 420
-    static let taskListRowGrowth: CGFloat = 30
-    static let taskCornerRadius: CGFloat = 16
+    static let taskListWidth: CGFloat = 434
+    static let taskRowHeight: CGFloat = 51
+    static let taskFontSize: CGFloat = 16
+    static let taskRowSpacing: CGFloat = 6
+    static let taskEditingTextVerticalOffset: CGFloat = 1
+    static let taskContentLeadingPadding: CGFloat = 12
+    static let taskContentTrailingPadding: CGFloat = 16
+    static let taskPanelPadding: CGFloat = 16
+    static let taskMaximumVisibleRows = 6
+    static let taskCornerRadius: CGFloat = 18
+    static let taskCanvasEnvelope = CGSize(width: 480, height: 506)
+    static let clipboardCornerRadius: CGFloat = 12
     static let taskControlHitSize: CGFloat = 24
     static let clipboardSize = CGSize(width: 240, height: 220)
     static let glassInset: CGFloat = 12
 
-    static func taskListSize(taskCount: Int) -> CGSize {
-        let rowCount = max(0, taskCount)
+    static func taskListContentSize(taskCount: Int) -> CGSize {
+        let rowCount = min(max(taskCount + 1, 1), taskMaximumVisibleRows)
         return CGSize(
             width: taskListWidth,
-            height: min(
-                taskListMaximumHeight,
-                taskListMinimumHeight + (CGFloat(rowCount) * taskListRowGrowth)
-            )
+            height: (taskRowHeight * CGFloat(rowCount))
+                + (taskRowSpacing * CGFloat(rowCount - 1))
+        )
+    }
+
+    static func taskListSize(taskCount: Int) -> CGSize {
+        let contentSize = taskListContentSize(taskCount: taskCount)
+        return CGSize(
+            width: contentSize.width + (taskPanelPadding * 2),
+            height: contentSize.height + (taskPanelPadding * 2)
         )
     }
 
@@ -69,6 +295,36 @@ enum DotsLayout {
 
     static var canvasSize: CGSize {
         canvasSize(cameraOffset: .zero)
+    }
+
+    static var dotHitDiameter: CGFloat {
+        nodeDiameter + (dotHitSlop * 2)
+    }
+
+    static func cameraPanelFrame(
+        anchoredTo anchor: CGRect,
+        style: CameraPanelStyle = .circle,
+        sizeMode: CameraPanelSize = .standard
+    ) -> CGRect {
+        let size = style.panelSize(for: sizeMode)
+        return CGRect(
+            x: anchor.midX - (size.width / 2),
+            y: anchor.minY - cameraPanelGap - size.height,
+            width: size.width,
+            height: size.height
+        )
+    }
+
+    static func cameraPanelResizeFrame(
+        from currentFrame: CGRect,
+        to size: CGSize
+    ) -> CGRect {
+        CGRect(
+            x: currentFrame.midX - (size.width / 2),
+            y: currentFrame.maxY - size.height,
+            width: size.width,
+            height: size.height
+        )
     }
 
     static func extraLeft(
@@ -207,13 +463,21 @@ enum DotsLayout {
             cameraOffset: cameraOffset,
             dotIDs: ids
         )
+        var nearestID: DotID?
+        var nearestDistance = CGFloat.infinity
         for index in ids.indices {
             let dotTarget = frames[index].insetBy(dx: -dotHitSlop, dy: -dotHitSlop)
-            if circleContains(dotTarget, point) {
-                return ids[index]
+            guard circleContains(dotTarget, point) else { continue }
+
+            let dx = point.x - frames[index].midX
+            let dy = point.y - frames[index].midY
+            let distance = (dx * dx) + (dy * dy)
+            if distance < nearestDistance {
+                nearestID = ids[index]
+                nearestDistance = distance
             }
         }
-        return nil
+        return nearestID
     }
 
     static func panelFrame(
@@ -286,6 +550,17 @@ enum DotsLayout {
     private static func staticBounds(dotIDs: [DotID]) -> CGRect {
         let ids = normalized(dotIDs)
         var bounds = CGRect(origin: .zero, size: rowPanelSize(dotCount: ids.count))
+        if ids.contains(.tasks) {
+            let taskCenterX = rowPanelSize(dotCount: ids.count).width / 2
+            bounds = bounds.union(
+                CGRect(
+                    x: taskCenterX - (taskCanvasEnvelope.width / 2),
+                    y: verticalPadding + nodeDiameter + hangingGap,
+                    width: taskCanvasEnvelope.width,
+                    height: taskCanvasEnvelope.height
+                )
+            )
+        }
         for expansion in [DotExpansion.camera, .tasks, .clipboard] {
             if let frame = rawHangingFrame(
                 expansion: expansion,
@@ -328,8 +603,9 @@ enum DotsLayout {
             return frame
         case .tasks:
             let size = taskListSize(taskCount: taskCount)
+            let taskCenterX = rowPanelSize(dotCount: ids.count).width / 2
             return CGRect(
-                x: dot.midX - (size.width / 2),
+                x: taskCenterX - (size.width / 2),
                 y: dot.maxY + hangingGap,
                 width: size.width,
                 height: size.height
@@ -403,12 +679,10 @@ enum DotsLayout {
 
 struct DotsView: View {
     @ObservedObject private var pointer: LauncherPointerState
-    @StateObject private var camera = CameraSession()
     @StateObject private var tasks = TaskStore()
     @StateObject private var clipboard = ClipboardStore()
     @State private var expansion: DotExpansion = .none
     @State private var cameraOffset: CGSize = .zero
-    @State private var cameraDragStart: CGSize = .zero
 
     let onExpansionChange: (DotExpansion, CGSize, Int) -> Void
 
@@ -428,31 +702,6 @@ struct DotsView: View {
         let canvas = DotsLayout.canvasSize(cameraOffset: cameraOffset, dotIDs: dotIDs)
 
         ZStack(alignment: .topLeading) {
-            if expansion == .camera,
-               let hang = DotsLayout.hangingFrame(
-                   expansion: .camera,
-                   cameraOffset: cameraOffset,
-                   dotIDs: dotIDs
-               )
-            {
-                expandedCamera
-                    .frame(width: hang.width, height: hang.height)
-                    .mask {
-                        if pointer.cameraReveal,
-                           let mask = pointer.cameraMaskFrame {
-                            Circle()
-                                .frame(width: mask.width, height: mask.height)
-                                .position(
-                                    x: mask.midX - hang.minX,
-                                    y: mask.midY - hang.minY
-                                )
-                        } else {
-                            Color.clear
-                        }
-                    }
-                    .offset(x: hang.minX, y: hang.minY)
-            }
-
             if expansion == .tasks,
                let hang = DotsLayout.hangingFrame(
                    expansion: .tasks,
@@ -503,56 +752,25 @@ struct DotsView: View {
         }
         .onChange(of: pointer.cameraOffset) { _, newOffset in
             cameraOffset = newOffset
-            cameraDragStart = newOffset
         }
-        .onDisappear {
-            pointer.setCameraMaskFrame(nil)
-            camera.stop()
-        }
-    }
-
-    private var expandedCamera: some View {
-        FeatureSurface(shape: Circle()) {
-            ZStack {
-                CameraPreview(session: camera.session)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .opacity(camera.status == .running ? 1 : 0)
-
-                cameraStatusOverlay
-
-                Circle()
-                    .stroke(.white.opacity(0.16), lineWidth: 0.75)
-            }
-            .clipShape(Circle())
-        }
-        .contentShape(Circle())
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Close selfie camera")
-        .accessibilityValue(camera.accessibilityDescription)
-        .accessibilityHint("Drag to place the camera. Click to close.")
+        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: expansion)
     }
 
     private var expandedTasks: some View {
-        FeatureSurface(
-            shape: RoundedRectangle(
-                cornerRadius: DotsLayout.taskCornerRadius,
-                style: .continuous
-            ),
-            backingOpacity: 0.72
-        ) {
-            TaskListView(store: tasks)
-        }
-        .contentShape(
-            RoundedRectangle(cornerRadius: DotsLayout.taskCornerRadius, style: .continuous)
-        )
-        .environment(\.colorScheme, .dark)
+        TaskListView(store: tasks)
+            .contentShape(
+                RoundedRectangle(
+                    cornerRadius: DotsLayout.taskCornerRadius,
+                    style: .continuous
+                )
+            )
+            .environment(\.colorScheme, .dark)
     }
 
     private var expandedClipboard: some View {
         FeatureSurface(
             shape: RoundedRectangle(
-                cornerRadius: DotsLayout.taskCornerRadius,
+                cornerRadius: DotsLayout.clipboardCornerRadius,
                 style: .continuous
             ),
             backingOpacity: 0.72
@@ -560,25 +778,12 @@ struct DotsView: View {
             ClipboardListView(store: clipboard)
         }
         .contentShape(
-            RoundedRectangle(cornerRadius: DotsLayout.taskCornerRadius, style: .continuous)
+            RoundedRectangle(
+                cornerRadius: DotsLayout.clipboardCornerRadius,
+                style: .continuous
+            )
         )
         .environment(\.colorScheme, .dark)
-    }
-
-    @ViewBuilder
-    private var cameraStatusOverlay: some View {
-        switch camera.status.overlay {
-        case .none:
-            EmptyView()
-        case .spinner:
-            ProgressView()
-                .controlSize(.small)
-                .tint(.white)
-        case .unavailable:
-            Image(systemName: "video.slash.fill")
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(.white)
-        }
     }
 
     private func toggleCamera() {
@@ -609,16 +814,15 @@ struct DotsView: View {
     }
 
     private func setExpansion(_ newExpansion: DotExpansion) {
-        if newExpansion == .camera {
-            camera.start()
-        } else if expansion == .camera {
-            camera.stop()
-        }
+        let isClosingCamera = expansion == .camera && newExpansion != .camera
 
-        expansion = newExpansion
-        cameraOffset = .zero
-        cameraDragStart = .zero
-        pointer.setCameraOffset(.zero)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            expansion = newExpansion
+        }
+        if !isClosingCamera {
+            cameraOffset = .zero
+            pointer.setCameraOffset(.zero)
+        }
     }
 
     private func notifyExpansionChange(
@@ -626,6 +830,281 @@ struct DotsView: View {
         cameraOffset: CGSize
     ) {
         onExpansionChange(expansion, cameraOffset, tasks.items.count)
+    }
+}
+
+struct CameraPanelView: View {
+    @ObservedObject var camera: CameraSession
+    @ObservedObject var model: CameraPanelModel
+    let onDismiss: () -> Void
+    let onToggleStyle: () -> Void
+    let onToggleSize: () -> Void
+
+    @State private var isHovering = false
+
+    init(
+        camera: CameraSession,
+        model: CameraPanelModel,
+        onDismiss: @escaping () -> Void = {},
+        onToggleStyle: @escaping () -> Void = {},
+        onToggleSize: @escaping () -> Void = {}
+    ) {
+        self.camera = camera
+        self.model = model
+        self.onDismiss = onDismiss
+        self.onToggleStyle = onToggleStyle
+        self.onToggleSize = onToggleSize
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let surfaceSize = cameraSurfaceSize(for: proxy.size)
+
+            ZStack(alignment: .topTrailing) {
+                cameraSurface(size: surfaceSize)
+                    .frame(
+                        width: proxy.size.width,
+                        height: proxy.size.height,
+                        alignment: .topLeading
+                    )
+
+                cameraControls
+            }
+        }
+        .frame(
+            minWidth: model.style.minimumPanelSize(for: model.sizeMode).width,
+            maxWidth: .infinity,
+            minHeight: model.style.minimumPanelSize(for: model.sizeMode).height,
+            maxHeight: .infinity,
+            alignment: .topLeading
+        )
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        .accessibilityLabel("Selfie camera")
+        .accessibilityValue(camera.accessibilityDescription)
+        .onAppear { camera.start() }
+        .onDisappear { camera.stop() }
+    }
+
+    private func cameraSurfaceSize(for panelSize: CGSize) -> CGSize {
+        let minimum = model.style.minimumSurfaceSize(for: model.sizeMode)
+        let availableWidth = max(minimum.width, panelSize.width)
+        let availableHeight = max(minimum.height, panelSize.height)
+        let width = min(availableWidth, availableHeight * model.style.surfaceAspectRatio)
+
+        return CGSize(width: width, height: width / model.style.surfaceAspectRatio)
+    }
+
+    private func cameraSurface(size: CGSize) -> some View {
+        let shape = MorphingCameraShape(
+            progress: model.style == .circle ? 1 : 0
+        )
+
+        return FeatureSurface(shape: shape, backingOpacity: 1) {
+            cameraContents(size: size)
+        }
+        .frame(width: size.width, height: size.height)
+        .clipShape(shape)
+        .animation(
+            .easeInOut(duration: CameraPanelStyle.transitionDuration),
+            value: model.style
+        )
+    }
+
+    private func cameraContents(size: CGSize) -> some View {
+        ZStack {
+            CameraPreview(session: camera.session)
+                .frame(
+                    width: size.width,
+                    height: size.height
+                )
+                .opacity(camera.status == .running ? 1 : 0)
+                .allowsHitTesting(false)
+
+            cameraStatusOverlay
+                .allowsHitTesting(false)
+        }
+        .frame(width: size.width, height: size.height)
+    }
+
+    private var cameraControls: some View {
+        let controlsAreVisible = isHovering || model.isTransitioning
+
+        return VStack(spacing: DotsLayout.cameraControlGap) {
+            CameraControlButton(
+                systemName: model.style.nextSymbolName,
+                accessibilityLabel: model.style.toggleAccessibilityLabel,
+                action: onToggleStyle
+            )
+            .id("camera-style-control")
+            CameraControlButton(
+                systemName: model.sizeMode.nextSymbolName,
+                accessibilityLabel: model.sizeMode.toggleAccessibilityLabel,
+                action: onToggleSize
+            )
+            .id("camera-size-control")
+            CameraControlButton(
+                systemName: "xmark",
+                accessibilityLabel: "Close camera",
+                action: onDismiss
+            )
+            .id("camera-close-control")
+        }
+        .frame(
+            width: DotsLayout.cameraControlSize,
+            height: DotsLayout.cameraControlStackHeight
+                - DotsLayout.cameraControlEdgePadding,
+            alignment: .top
+        )
+        .padding(.top, DotsLayout.cameraControlEdgePadding)
+        .padding(.trailing, DotsLayout.cameraControlEdgePadding)
+        .opacity(controlsAreVisible ? 1 : 0)
+        .allowsHitTesting(controlsAreVisible)
+        .animation(.easeOut(duration: 0.08), value: controlsAreVisible)
+    }
+
+    @ViewBuilder
+    private var cameraStatusOverlay: some View {
+        switch camera.status.overlay {
+        case .none:
+            EmptyView()
+        case .spinner:
+            ProgressView()
+                .controlSize(.small)
+                .tint(.white)
+        case .unavailable:
+            Image(systemName: "video.slash.fill")
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+    }
+}
+
+struct MorphingCameraShape: Shape {
+    var progress: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let clampedProgress = min(max(progress, 0), 1)
+        let maximumRadius = min(rect.width, rect.height) / 2
+        let startingRadius = min(DotsLayout.cameraPanelCornerRadius, maximumRadius)
+        let cornerRadius = startingRadius
+            + ((maximumRadius - startingRadius) * clampedProgress)
+
+        return RoundedRectangle(
+            cornerRadius: cornerRadius,
+            style: .continuous
+        )
+        .path(in: rect)
+    }
+}
+
+private struct CameraControlButton: View {
+    let systemName: String
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        styledButton
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    @ViewBuilder
+    private var styledButton: some View {
+        if #available(macOS 26.0, *) {
+            Button(action: action, label: buttonLabel)
+                .buttonStyle(.plain)
+                .glassEffect(.clear.interactive(), in: Circle())
+                .contentShape(Circle())
+                .overlay {
+                    CameraControlEdgeLighting(isHovering: isHovering)
+                }
+        } else {
+            Button(action: action, label: buttonLabel)
+                .buttonStyle(CameraControlButtonStyle(isHovering: isHovering))
+                .overlay {
+                    CameraControlEdgeLighting(isHovering: isHovering)
+                }
+        }
+    }
+
+    private func buttonLabel() -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(
+                width: DotsLayout.cameraControlSize,
+                height: DotsLayout.cameraControlSize
+            )
+            .contentShape(Circle())
+    }
+}
+
+private struct CameraControlEdgeLighting: View {
+    let isHovering: Bool
+
+    var body: some View {
+        Circle()
+            .stroke(
+                AngularGradient(
+                    gradient: Gradient(stops: [
+                        .init(
+                            color: .white.opacity(isHovering ? 0.86 : 0.7),
+                            location: 0
+                        ),
+                        .init(color: .white.opacity(0.1), location: 0.24),
+                        .init(
+                            color: .white.opacity(isHovering ? 0.7 : 0.54),
+                            location: 0.5
+                        ),
+                        .init(color: .white.opacity(0.08), location: 0.76),
+                        .init(
+                            color: .white.opacity(isHovering ? 0.86 : 0.7),
+                            location: 1
+                        ),
+                    ]),
+                    center: .center,
+                    startAngle: .degrees(-90),
+                    endAngle: .degrees(270)
+                ),
+                lineWidth: 0.9
+            )
+            .allowsHitTesting(false)
+    }
+}
+
+private struct CameraControlButtonStyle: ButtonStyle {
+    let isHovering: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                .ultraThinMaterial,
+                in: Circle()
+            )
+            .overlay {
+                Circle()
+                    .stroke(
+                        .white.opacity(isHovering ? 0.38 : 0.24),
+                        lineWidth: 0.75
+                    )
+            }
+            .overlay {
+                if configuration.isPressed {
+                    Circle()
+                        .fill(.white.opacity(0.12))
+                }
+            }
+            .scaleEffect(configuration.isPressed ? 0.94 : (isHovering ? 1.03 : 1))
+            .animation(.easeOut(duration: configuration.isPressed ? 0.05 : 0.08), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.08), value: isHovering)
     }
 }
 
@@ -677,136 +1156,170 @@ private struct FeatureSurface<SurfaceShape: Shape, Content: View>: View {
 
 struct TaskListView: View {
     @ObservedObject var store: TaskStore
+    @State private var addDraft = ""
     @State private var hoveredTaskID: UUID?
 
     private var panelSize: CGSize {
         DotsLayout.taskListSize(taskCount: store.items.count)
     }
 
-    var body: some View {
-        ScrollViewReader { scrollProxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    Text("Tasks")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.92))
+    private var contentSize: CGSize {
+        DotsLayout.taskListContentSize(taskCount: store.items.count)
+    }
 
-                    if store.items.isEmpty {
-                        Text("No tasks")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.62))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 4)
-                    } else {
+    var body: some View {
+        FeatureSurface(
+            shape: RoundedRectangle(
+                cornerRadius: DotsLayout.taskCornerRadius,
+                style: .continuous
+            ),
+            backingOpacity: 0.72
+        ) {
+            ScrollViewReader { scrollProxy in
+                ScrollView(.vertical) {
+                    VStack(spacing: DotsLayout.taskRowSpacing) {
+                        taskAddRow
+
                         ForEach(store.visibleItems) { item in
                             taskRow(item)
                                 .id(item.id)
                         }
                     }
-
-                    TaskComposerField(
-                        text: $store.draft,
-                        placeholder: store.editingTaskID == nil ? "Add a task" : "Edit task",
-                        onSubmit: store.addDraft,
-                        onTextChange: store.clearTaskSelection,
-                        onBackspaceAtStart: store.handleBackspaceOnEmptyDraft,
-                        onMoveSelection: store.moveTaskSelection,
-                        onEditSelected: store.editSelectedTask
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24)
+                    .frame(maxWidth: .infinity, alignment: .top)
                 }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .onChange(of: store.selectedTaskID) { _, selectedTaskID in
-                guard let selectedTaskID else { return }
-                withAnimation(.easeOut(duration: 0.12)) {
-                    scrollProxy.scrollTo(selectedTaskID, anchor: .center)
+                .frame(
+                    width: contentSize.width,
+                    height: contentSize.height,
+                    alignment: .topLeading
+                )
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+                .onChange(of: store.selectedTaskID) { _, selectedTaskID in
+                    guard let selectedTaskID else { return }
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        scrollProxy.scrollTo(selectedTaskID, anchor: .center)
+                    }
                 }
             }
+            .padding(DotsLayout.taskPanelPadding)
         }
         .frame(
             width: panelSize.width,
             height: panelSize.height,
             alignment: .topLeading
         )
-        .contentShape(
-            RoundedRectangle(cornerRadius: DotsLayout.taskCornerRadius, style: .continuous)
-        )
+    }
+
+    private var taskAddRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "plus")
+                .font(.system(size: 16, weight: .regular))
+                .foregroundStyle(.white)
+                .frame(
+                    width: 17,
+                    height: 19,
+                    alignment: .leading
+                )
+                .padding(.leading, DotsLayout.taskContentLeadingPadding)
+
+            TaskComposerField(
+                text: $addDraft,
+                placeholder: "Add a task",
+                onSubmit: addTaskDraft,
+                onTextChange: store.clearTaskSelection,
+                onBackspaceAtStart: store.handleBackspaceOnAddDraft,
+                onMoveSelection: store.moveTaskSelection,
+                onEditSelected: store.editSelectedTask
+            )
+                .frame(height: DotsLayout.taskRowHeight)
+                .frame(maxWidth: .infinity)
+                .padding(.trailing, DotsLayout.taskContentTrailingPadding)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: DotsLayout.taskRowHeight)
+        .background {
+            taskRowSurface
+        }
+        .contentShape(Rectangle())
     }
 
     private func taskRow(_ item: DotTask) -> some View {
-        HStack(spacing: 8) {
+        let rowIndex = store.visibleItems.firstIndex { $0.id == item.id } ?? 0
+        let rowOpacity = taskRowOpacity(at: rowIndex)
+
+        return HStack(spacing: 8) {
             Button {
                 store.toggle(item.id)
             } label: {
-                ZStack {
-                    Circle()
-                        .stroke(.white.opacity(item.isDone ? 0.55 : 0.9), lineWidth: 1.5)
-                    if item.isDone {
-                        Circle()
-                            .fill(.white.opacity(0.9))
-                            .padding(3)
-                    }
-                }
-                .frame(width: 14, height: 14)
-                .frame(
-                    width: DotsLayout.taskControlHitSize,
-                    height: DotsLayout.taskControlHitSize
-                )
-                .contentShape(Rectangle())
+                Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(.white)
+                    .frame(
+                        width: 19,
+                        height: 19,
+                        alignment: .leading
+                    )
+                    .contentShape(Rectangle().inset(by: -2.5))
+                    .padding(.leading, DotsLayout.taskContentLeadingPadding)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(item.isDone ? "Mark \(item.title) incomplete" : "Complete \(item.title)")
 
-            Text(item.title)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.white.opacity(item.isDone ? 0.62 : 0.95))
-                .strikethrough(item.isDone)
-                .lineLimit(2)
-
-            Spacer(minLength: 4)
+            if store.editingTaskID == item.id {
+                taskEditorField(placeholder: "Edit task")
+                    .frame(height: DotsLayout.taskRowHeight)
+                    .frame(maxWidth: .infinity)
+            } else {
+                Button {
+                    store.editTask(item.id)
+                } label: {
+                    Text(item.title)
+                        .font(.system(size: DotsLayout.taskFontSize, weight: .regular))
+                        .foregroundStyle(.white.opacity(item.isDone ? 0.6 : 1))
+                        .strikethrough(item.isDone)
+                        .lineLimit(1)
+                        .multilineTextAlignment(.leading)
+                        .frame(height: DotsLayout.taskRowHeight, alignment: .center)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Edit \(item.title)")
+            }
 
             if hoveredTaskID == item.id {
                 Button {
                     store.remove(item.id)
                 } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.72))
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(.white)
                         .frame(
-                            width: DotsLayout.taskControlHitSize,
-                            height: DotsLayout.taskControlHitSize
+                            width: 18,
+                            height: 19
                         )
-                        .contentShape(Rectangle())
+                        .contentShape(Rectangle().inset(by: -3))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Delete \(item.title)")
+                .padding(.trailing, DotsLayout.taskContentTrailingPadding)
             } else {
                 Color.clear
                     .frame(
-                        width: DotsLayout.taskControlHitSize,
-                        height: DotsLayout.taskControlHitSize
+                        width: 18,
+                        height: 19
                     )
                     .accessibilityHidden(true)
+                    .padding(.trailing, DotsLayout.taskContentTrailingPadding)
             }
         }
-        .frame(minHeight: 24)
-        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity)
+        .frame(height: DotsLayout.taskRowHeight)
         .background {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(
-                    .white.opacity(store.selectedTaskID == item.id ? 0.12 : 0)
-                )
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .stroke(
-                    .white.opacity(store.selectedTaskID == item.id ? 0.16 : 0),
-                    lineWidth: 0.75
-                )
+            taskRowSurface
         }
         .contentShape(Rectangle())
+        .opacity(rowOpacity)
         .onHover { hovering in
             hoveredTaskID = hovering ? item.id : nil
         }
@@ -814,6 +1327,52 @@ struct TaskListView: View {
             store.remove(item.id)
         }
         .accessibilityAddTraits(store.selectedTaskID == item.id ? .isSelected : [])
+    }
+
+    private var taskRowSurface: some View {
+        TaskRowSurface()
+    }
+
+    private func taskRowOpacity(at index: Int) -> Double {
+        guard store.visibleItems.count >= 4 else { return 1 }
+
+        switch store.visibleItems.count - index - 1 {
+        case 0:
+            return 0.1
+        case 1:
+            return 0.4
+        default:
+            return 1
+        }
+    }
+
+    private func taskEditorField(placeholder: String) -> some View {
+        TaskComposerField(
+            text: $store.draft,
+            placeholder: placeholder,
+            onSubmit: store.addDraft,
+            onTextChange: store.clearTaskSelection,
+            onBackspaceAtStart: store.handleBackspaceOnEmptyDraft,
+            onMoveSelection: store.moveTaskSelection,
+            onEditSelected: store.editSelectedTask
+        )
+    }
+
+    private func addTaskDraft() {
+        guard store.add(addDraft) != nil else { return }
+        addDraft = ""
+    }
+}
+
+private struct TaskRowSurface: View {
+    private let shape = RoundedRectangle(
+        cornerRadius: DotsLayout.taskCornerRadius,
+        style: .continuous
+    )
+
+    @ViewBuilder
+    var body: some View {
+        shape.fill(Color(red: 122 / 255, green: 122 / 255, blue: 122 / 255))
     }
 }
 
@@ -986,16 +1545,90 @@ private struct TaskComposerField: NSViewRepresentable {
     }
 }
 
+final class VerticallyCenteredTextFieldCell: NSTextFieldCell {
+    override func titleRect(forBounds rect: NSRect) -> NSRect {
+        centeredTextRect(forBounds: rect)
+    }
+
+    override func drawingRect(forBounds rect: NSRect) -> NSRect {
+        centeredTextRect(forBounds: rect)
+    }
+
+    override func edit(
+        withFrame rect: NSRect,
+        in controlView: NSView,
+        editor textObject: NSText,
+        delegate: Any?,
+        event: NSEvent?
+    ) {
+        super.edit(
+            withFrame: editorTextRect(forBounds: rect),
+            in: controlView,
+            editor: textObject,
+            delegate: delegate,
+            event: event
+        )
+    }
+
+    override func select(
+        withFrame rect: NSRect,
+        in controlView: NSView,
+        editor textObject: NSText,
+        delegate: Any?,
+        start selectionStart: Int,
+        length selectionLength: Int
+    ) {
+        super.select(
+            withFrame: editorTextRect(forBounds: rect),
+            in: controlView,
+            editor: textObject,
+            delegate: delegate,
+            start: selectionStart,
+            length: selectionLength
+        )
+    }
+
+    func editorTextRect(forBounds rect: NSRect) -> NSRect {
+        centeredTextRect(
+            forBounds: rect,
+            verticalOffset: DotsLayout.taskEditingTextVerticalOffset
+        )
+    }
+
+    private func centeredTextRect(
+        forBounds rect: NSRect,
+        verticalOffset: CGFloat = 0
+    ) -> NSRect {
+        let baseRect = super.titleRect(forBounds: rect)
+        let textHeight = ceil(
+            (font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize))
+                .boundingRectForFont.height
+        )
+        let centeredY = floor(rect.midY - (textHeight / 2) + verticalOffset)
+
+        return NSRect(
+            x: baseRect.minX,
+            y: centeredY,
+            width: baseRect.width,
+            height: textHeight
+        )
+    }
+}
+
 private final class TaskComposerHost: NSView {
     let field = FocusableTextField()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         appearance = NSAppearance(named: .darkAqua)
+        field.cell = VerticallyCenteredTextFieldCell(textCell: "")
+        field.isEditable = true
+        field.isSelectable = true
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 13, weight: .medium)
+        field.font = .systemFont(ofSize: DotsLayout.taskFontSize, weight: .regular)
+        field.alignment = .left
         field.textColor = .white
         field.appearance = NSAppearance(named: .darkAqua)
         field.setAccessibilityLabel("New task")
@@ -1014,8 +1647,11 @@ private final class TaskComposerHost: NSView {
         field.placeholderAttributedString = NSAttributedString(
             string: placeholder,
             attributes: [
-                .foregroundColor: NSColor.white.withAlphaComponent(0.58),
-                .font: NSFont.systemFont(ofSize: 13, weight: .medium),
+                .foregroundColor: NSColor.white.withAlphaComponent(0.6),
+                .font: NSFont.systemFont(
+                    ofSize: DotsLayout.taskFontSize,
+                    weight: .regular
+                ),
             ]
         )
     }
@@ -1027,11 +1663,11 @@ private final class TaskComposerHost: NSView {
 
     override func layout() {
         super.layout()
-        field.frame = bounds
+        field.frame = bounds.insetBy(dx: 0, dy: 1)
     }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: 24)
+        NSSize(width: NSView.noIntrinsicMetric, height: DotsLayout.taskRowHeight)
     }
 }
 
@@ -1097,6 +1733,13 @@ final class FocusableTextField: NSTextField {
         guard let window else { return }
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
-        window.makeFirstResponder(self)
+        guard window.makeFirstResponder(self),
+              let editor = currentEditor() as? NSTextView
+        else {
+            return
+        }
+        editor.setSelectedRange(
+            NSRange(location: stringValue.utf16.count, length: 0)
+        )
     }
 }

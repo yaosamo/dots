@@ -41,7 +41,7 @@ final class TaskStore: ObservableObject {
         guard !trimmed.isEmpty else { return nil }
 
         let item = DotTask(id: UUID(), title: trimmed, isDone: false)
-        items.append(item)
+        items.insert(item, at: items.startIndex)
         persist()
         return item
     }
@@ -64,11 +64,13 @@ final class TaskStore: ObservableObject {
     }
 
     var visibleItems: [DotTask] {
-        items.filter { $0.id != editingTaskID }
+        items
     }
 
     @discardableResult
     func moveTaskSelection(_ direction: TaskSelectionDirection) -> Bool {
+        guard editingTaskID == nil else { return false }
+
         let candidates = visibleItems
         guard !candidates.isEmpty else {
             selectedTaskID = nil
@@ -100,15 +102,24 @@ final class TaskStore: ObservableObject {
     @discardableResult
     func editSelectedTask() -> Bool {
         guard let selectedTaskID,
-              let selectedTask = visibleItems.first(where: { $0.id == selectedTaskID })
+              visibleItems.contains(where: { $0.id == selectedTaskID })
         else {
             self.selectedTaskID = nil
             return false
         }
 
-        self.selectedTaskID = nil
-        editingTaskID = selectedTask.id
-        draft = selectedTask.title
+        return editTask(selectedTaskID)
+    }
+
+    @discardableResult
+    func editTask(_ id: UUID) -> Bool {
+        guard let task = visibleItems.first(where: { $0.id == id }) else {
+            return false
+        }
+
+        selectedTaskID = nil
+        editingTaskID = task.id
+        draft = task.title
         return true
     }
 
@@ -127,8 +138,14 @@ final class TaskStore: ObservableObject {
         return recallPreviousTask()
     }
 
+    @discardableResult
+    func handleBackspaceOnAddDraft() -> Bool {
+        guard editingTaskID == nil else { return false }
+        return recallPreviousTask()
+    }
+
     private func recallPreviousTask() -> Bool {
-        guard let previous = items.last else { return false }
+        guard let previous = items.first else { return false }
         selectedTaskID = nil
         editingTaskID = previous.id
         draft = previous.title

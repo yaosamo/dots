@@ -10,10 +10,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: FloatingPanel?
     private var rootView: LauncherRootView?
     private var statusItem: NSStatusItem?
+    private var cameraPanel: CameraFloatingPanel?
+    private var cameraResizeGeneration = 0
     private var cameraOffset: CGSize = .zero
     private var homePanelFrame: NSRect?
     private var applicationBeforeTasks: NSRunningApplication?
     private let pointerState = LauncherPointerState()
+    private let dotAppearance = DotAppearanceSettings.shared
+    private let cameraSession = CameraSession()
+    private let cameraPanelModel = CameraPanelModel()
     private let overlaySession = OverlaySession()
     private let toast = ToastController()
 
@@ -66,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         let rootView = LauncherRootView(hostingView: hostingView)
         rootView.pointerState = pointerState
+        rootView.dotMaterial = dotAppearance.material
 
         panel.contentView = rootView
         panel.onCancel = { [weak self] in
@@ -101,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        dismissCameraPanel()
         overlaySession.dismiss()
         toast.dismiss()
         if let statusItem {
@@ -117,6 +124,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ])
     }
 
+    @objc func setDotMaterial(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let material = DotMaterialStyle(rawValue: rawValue) else {
+            return
+        }
+
+        dotAppearance.material = material
+        rootView?.dotMaterial = material
+        statusItem?.menu = DotsMenu.quitMenu(material: material)
+        NSApp.mainMenu = DotsMenu.mainMenu(material: material)
+    }
+
     @objc private func screenConfigurationDidChange() {
         positionPanel()
     }
@@ -129,13 +148,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rootView?.taskCount = taskCount
         if newExpansion == .none {
             overlaySession.dismiss()
-            if rootView?.animateCameraCollapse(completion: { [weak self] in
-                self?.restoreHomePanel()
-            }) != true {
-                restoreHomePanel()
-            }
+            dismissCameraPanel()
+            rootView?.expansion = .none
+            rootView?.cameraOffset = .zero
+            restoreHomePanel()
         } else if newExpansion == .redPen || newExpansion == .screenToText {
             presentOverlay(newExpansion)
+        } else if newExpansion == .camera {
+            overlaySession.dismiss()
+            rootView?.expansion = .camera
+            rootView?.cameraOffset = .zero
+            cameraOffset = .zero
+            presentCameraPanel()
         } else {
             overlaySession.dismiss()
             if homePanelFrame == nil {
@@ -166,6 +190,102 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             restoreApplicationBeforeTasks()
         }
+    }
+
+    private func presentCameraPanel() {
+        guard cameraPanel == nil,
+              let frame = cameraPanelFrame(for: cameraPanelModel.style) else { return }
+
+        let panel = CameraFloatingPanel(
+            frame: frame,
+            onDismiss: { [weak self] in
+                self?.pointerState.requestDismissal()
+            }
+        )
+        panel.hasShadow = false
+        panel.contentViewController = NSHostingController(
+            rootView: CameraPanelView(
+                camera: cameraSession,
+                model: cameraPanelModel,
+                onDismiss: { [weak self] in
+                    self?.pointerState.requestDismissal()
+                },
+                onToggleStyle: { [weak self] in
+                    self?.toggleCameraStyle()
+                },
+                onToggleSize: { [weak self] in
+                    self?.toggleCameraSize()
+                }
+            )
+        )
+        if let contentView = panel.contentViewController?.view {
+            contentView.frame = NSRect(origin: .zero, size: frame.size)
+            contentView.autoresizingMask = [.width, .height]
+        }
+        panel.setFrame(frame, display: false)
+        cameraPanel = panel
+        panel.orderFrontRegardless()
+    }
+
+    private func toggleCameraStyle() {
+        cameraPanelModel.toggleStyle()
+        resizeCameraPanel()
+    }
+
+    private func toggleCameraSize() {
+        cameraPanelModel.toggleSize()
+        resizeCameraPanel()
+    }
+
+    private func resizeCameraPanel() {
+        guard let panel = cameraPanel else { return }
+
+        cameraResizeGeneration += 1
+        let resizeGeneration = cameraResizeGeneration
+        cameraPanelModel.isTransitioning = true
+
+        let currentFrame = panel.frame
+        let size = cameraPanelModel.style.panelSize(for: cameraPanelModel.sizeMode)
+        let targetFrame = DotsLayout.cameraPanelResizeFrame(
+            from: currentFrame,
+            to: size
+        )
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = CameraPanelStyle.transitionDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.completionHandler = { [weak self] in
+                guard let self,
+                      self.cameraResizeGeneration == resizeGeneration else {
+                    return
+                }
+                self.cameraPanelModel.isTransitioning = false
+            }
+            panel.animator().setFrame(targetFrame, display: true)
+        }
+    }
+
+    private func dismissCameraPanel() {
+        guard let cameraPanel else { return }
+        self.cameraPanel = nil
+        cameraPanel.orderOut(nil)
+        cameraPanelModel.resetStyle()
+    }
+
+    private func cameraPanelFrame(for style: CameraPanelStyle) -> NSRect? {
+        guard let anchor = rootView?.orbView(for: .mirror),
+              let anchorWindow = anchor.window else {
+            return nil
+        }
+
+        let anchorInWindow = anchor.convert(anchor.bounds, to: nil)
+        let anchorOnScreen = anchorWindow.convertToScreen(anchorInWindow)
+        let frame = DotsLayout.cameraPanelFrame(
+            anchoredTo: anchorOnScreen,
+            style: style,
+            sizeMode: cameraPanelModel.sizeMode
+        )
+        return frame
     }
 
     private func restoreApplicationBeforeTasks() {
@@ -235,7 +355,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func restoreHomePanel() {
-        pointerState.setCameraReveal(false)
+        pointerState.setCameraOffset(.zero)
         rootView?.expansion = .none
         rootView?.cameraOffset = .zero
         cameraOffset = .zero
@@ -285,21 +405,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.title = "Dots"
         item.button?.toolTip = "Dots"
-        item.menu = DotsMenu.quitMenu()
+        item.menu = DotsMenu.quitMenu(material: dotAppearance.material)
         statusItem = item
     }
 
     private func installAppMenu() {
-        NSApp.mainMenu = DotsMenu.mainMenu()
+        NSApp.mainMenu = DotsMenu.mainMenu(material: dotAppearance.material)
     }
 }
 
 enum DotsMenu {
-    static func mainMenu() -> NSMenu {
+    static func mainMenu(material: DotMaterialStyle? = nil) -> NSMenu {
         let mainMenu = NSMenu()
+        let selectedMaterial = material ?? DotAppearanceSettings.shared.material
 
         let appMenuItem = NSMenuItem(title: "Dots", action: nil, keyEquivalent: "")
-        appMenuItem.submenu = quitMenu()
+        appMenuItem.submenu = quitMenu(material: selectedMaterial)
         mainMenu.addItem(appMenuItem)
 
         let editMenuItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
@@ -341,8 +462,9 @@ enum DotsMenu {
         return menu
     }
 
-    static func quitMenu() -> NSMenu {
+    static func quitMenu(material: DotMaterialStyle? = nil) -> NSMenu {
         let menu = NSMenu()
+        let selectedMaterial = material ?? DotAppearanceSettings.shared.material
 
         let about = NSMenuItem(
             title: "About Dots",
@@ -351,6 +473,14 @@ enum DotsMenu {
         )
         about.target = NSApp.delegate
         menu.addItem(about)
+
+        let materialItem = NSMenuItem(
+            title: "Dot Material",
+            action: nil,
+            keyEquivalent: ""
+        )
+        materialItem.submenu = materialMenu(selected: selectedMaterial)
+        menu.addItem(materialItem)
         menu.addItem(.separator())
 
         let quit = NSMenuItem(
@@ -361,6 +491,22 @@ enum DotsMenu {
         quit.keyEquivalentModifierMask = [.command]
         quit.target = NSApp
         menu.addItem(quit)
+        return menu
+    }
+
+    private static func materialMenu(selected: DotMaterialStyle) -> NSMenu {
+        let menu = NSMenu(title: "Dot Material")
+        for material in DotMaterialStyle.allCases {
+            let item = NSMenuItem(
+                title: material.title,
+                action: #selector(AppDelegate.setDotMaterial(_:)),
+                keyEquivalent: ""
+            )
+            item.target = NSApp.delegate
+            item.representedObject = material.rawValue
+            item.state = material == selected ? .on : .off
+            menu.addItem(item)
+        }
         return menu
     }
 
@@ -400,17 +546,32 @@ private final class FloatingPanel: NSPanel {
     }
 }
 
-final class CameraTransitionHitAnchorView: NSView {
-    static let diameter = DotsLayout.nodeDiameter + (DotsLayout.dotHitSlop * 2)
-    private static let coverageOpacity: CGFloat = 0.001
+private final class CameraFloatingPanel: NSPanel {
+    private let onDismiss: () -> Void
+    private var isTrackingCameraControl = false
+    private var dragStartScreenPoint: NSPoint?
+    private var dragStartWindowOrigin: NSPoint?
+    private var didDragSurface = false
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.black.withAlphaComponent(Self.coverageOpacity).cgColor
-        layer?.cornerRadius = Self.diameter / 2
-        layer?.masksToBounds = true
-        isHidden = true
+    init(
+        frame: NSRect,
+        onDismiss: @escaping () -> Void
+    ) {
+        self.onDismiss = onDismiss
+        super.init(
+            contentRect: frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        backgroundColor = .clear
+        isOpaque = false
+        hasShadow = true
+        hidesOnDeactivate = false
+        level = .statusBar
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        acceptsMouseMovedEvents = true
+        becomesKeyOnlyIfNeeded = true
     }
 
     @available(*, unavailable)
@@ -418,38 +579,93 @@ final class CameraTransitionHitAnchorView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override var isOpaque: Bool { false }
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
 
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        NSCursor.arrow.set()
+    }
 
-    func arm(at point: CGPoint) {
-        frame = CGRect(
-            x: point.x - (Self.diameter / 2),
-            y: point.y - (Self.diameter / 2),
-            width: Self.diameter,
-            height: Self.diameter
+    override func sendEvent(_ event: NSEvent) {
+        switch event.type {
+        case .leftMouseDown:
+            if isCameraControlHit(event) {
+                isTrackingCameraControl = true
+                super.sendEvent(event)
+                return
+            }
+            dragStartScreenPoint = NSEvent.mouseLocation
+            dragStartWindowOrigin = frame.origin
+            didDragSurface = false
+        case .leftMouseDragged:
+            guard let dragStartScreenPoint,
+                  let dragStartWindowOrigin else {
+                return
+            }
+
+            let currentScreenPoint = NSEvent.mouseLocation
+            let deltaX = currentScreenPoint.x - dragStartScreenPoint.x
+            let deltaY = currentScreenPoint.y - dragStartScreenPoint.y
+            if hypot(deltaX, deltaY) >= 4 {
+                didDragSurface = true
+            }
+            guard didDragSurface else { return }
+
+            setFrameOrigin(
+                NSPoint(
+                    x: dragStartWindowOrigin.x + deltaX,
+                    y: dragStartWindowOrigin.y + deltaY
+                )
+            )
+        case .leftMouseUp:
+            if isTrackingCameraControl {
+                super.sendEvent(event)
+                isTrackingCameraControl = false
+                return
+            }
+            if dragStartScreenPoint != nil,
+               !didDragSurface {
+                onDismiss()
+            }
+            dragStartScreenPoint = nil
+            dragStartWindowOrigin = nil
+            didDragSurface = false
+        default:
+            super.sendEvent(event)
+        }
+    }
+
+    private func isCameraControlHit(_ event: NSEvent) -> Bool {
+        isCameraControlHit(at: event.locationInWindow)
+    }
+
+    private func isCameraControlHit(at point: NSPoint) -> Bool {
+        let bounds = contentView?.bounds ?? NSRect(origin: .zero, size: frame.size)
+        let controlsFrame = NSRect(
+            x: bounds.maxX
+                - DotsLayout.cameraControlEdgePadding
+                - DotsLayout.cameraControlSize,
+            y: bounds.maxY
+                - DotsLayout.cameraControlEdgePadding
+                - DotsLayout.cameraControlStackHeight,
+            width: DotsLayout.cameraControlSize,
+            height: DotsLayout.cameraControlStackHeight
         )
-        isHidden = false
-    }
-
-    func disarm() {
-        isHidden = true
-    }
-
-    func contains(_ point: CGPoint) -> Bool {
-        guard !isHidden else { return false }
-        let dx = point.x - frame.midX
-        let dy = point.y - frame.midY
-        let radius = Self.diameter / 2
-        return (dx * dx) + (dy * dy) <= (radius * radius)
+        return controlsFrame.contains(point)
     }
 }
 
 final class DotOrbView: NSView {
     var id: DotID = .mirror
     var onClick: (() -> Void)?
+    var material: DotMaterialStyle = .liquid {
+        didSet {
+            circleView.rootView = AnyView(DotOrbMaterialView(style: material))
+        }
+    }
     private let circleView = NSHostingView(
-        rootView: AnyView(Circle().fill(.black))
+        rootView: AnyView(DotOrbMaterialView(style: .liquid))
     )
     private var collapseSpring: FrameSpring?
 
@@ -489,6 +705,10 @@ final class DotOrbView: NSView {
     }
 
     var isSpringing: Bool { collapseSpring?.isRunning == true }
+
+    func stopSpring() {
+        collapseSpring?.stop()
+    }
 
     func springTo(
         _ destination: CGRect,
@@ -614,6 +834,11 @@ private final class FrameSpring {
 
 final class LauncherRootView: NSView {
     let hostingView: DotsHostingView
+    var dotMaterial: DotMaterialStyle = .liquid {
+        didSet {
+            orbViews.forEach { $0.material = dotMaterial }
+        }
+    }
     var pointerState: LauncherPointerState? {
         didSet { hostingView.pointerState = pointerState }
     }
@@ -626,28 +851,19 @@ final class LauncherRootView: NSView {
     var cameraOffset: CGSize = .zero {
         didSet {
             hostingView.cameraOffset = cameraOffset
-            updateCameraMaskForCurrentFrame()
             needsLayout = true
         }
     }
     var taskCount: Int = 0
 
     private var orbViews: [DotOrbView] = []
-    private let cameraTransitionHitAnchor = CameraTransitionHitAnchorView(frame: .zero)
-    private weak var cameraMorphingOrb: DotOrbView?
-    private var isCameraMorphInProgress = false
-    private var hasCompletedCameraMorph = false
     private var launchingOrbIDs = Set<DotID>()
     private var homeOrbScreenOrigins: [CGPoint]?
-    private var cameraDragStartScreen: CGPoint?
-    private var cameraDragOriginOffset: CGSize = .zero
-    private var cameraDidDrag = false
 
     init(hostingView: DotsHostingView) {
         self.hostingView = hostingView
         super.init(frame: .zero)
         addSubview(hostingView)
-        addSubview(cameraTransitionHitAnchor)
         hostingView.autoresizingMask = [.width, .height]
     }
 
@@ -659,6 +875,10 @@ final class LauncherRootView: NSView {
     override var isOpaque: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    func orbView(for id: DotID) -> NSView? {
+        orbViews.first { $0.id == id }
+    }
+
     override func layout() {
         super.layout()
         hostingView.frame = bounds
@@ -666,28 +886,13 @@ final class LauncherRootView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        if beginCameraDrag(event) { return }
         if handleClick(event) { return }
         super.mouseDown(with: event)
     }
 
-    override func mouseDragged(with event: NSEvent) {
-        if updateCameraDrag(event) { return }
-        super.mouseDragged(with: event)
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        if endCameraDrag(event) { return }
-        super.mouseUp(with: event)
-    }
-
     override func hitTest(_ point: NSPoint) -> NSView? {
-        for orb in orbViews where !orb.isHidden && orb.frame.contains(point) {
+        for orb in orbViews where !orb.isHidden && orb.alphaValue > 0.01 && orb.frame.contains(point) {
             return orb
-        }
-
-        if cameraTransitionHitAnchor.contains(point) {
-            return self
         }
 
         let swift = swiftPoint(point)
@@ -730,19 +935,26 @@ final class LauncherRootView: NSView {
     @discardableResult
     func handleClick(_ event: NSEvent) -> Bool {
         let local = convert(event.locationInWindow, from: nil)
-        if let orb = orbViews.first(where: { $0.frame.contains(local) }) {
+        if let orb = orbViews.first(where: {
+            !$0.isHidden && $0.alphaValue > 0.01 && $0.frame.contains(local)
+        }) {
             activateDot(
                 orb.id,
-                ignoreDebounce: isCameraMorphInProgress || orb.isSpringing,
-                cameraClick: local
+                ignoreDebounce: orb.isSpringing
             )
             return true
         }
-        if cameraTransitionHitAnchor.contains(local) {
-            activateDot(.mirror, ignoreDebounce: true, cameraClick: local)
+        let swift = swiftPoint(for: event)
+        if expansion == .camera,
+           DotsLayout.containsInteractiveContent(
+            swift,
+            expansion: expansion,
+            cameraOffset: cameraOffset,
+            taskCount: taskCount
+           ) {
+            pointerState?.requestDismissal()
             return true
         }
-        let swift = swiftPoint(for: event)
         guard let id = DotsLayout.dotID(
             at: swift,
             expansion: expansion,
@@ -750,72 +962,15 @@ final class LauncherRootView: NSView {
         ) else {
             return false
         }
-        activateDot(id, cameraClick: id == .mirror ? local : nil)
+        activateDot(id)
         return true
     }
 
     private func activateDot(
         _ id: DotID,
-        ignoreDebounce: Bool = false,
-        cameraClick: CGPoint? = nil
+        ignoreDebounce: Bool = false
     ) {
-        if id == .mirror, let cameraClick {
-            cameraTransitionHitAnchor.arm(at: cameraClick)
-        }
         pointerState?.requestActivation(of: id, ignoreDebounce: ignoreDebounce)
-    }
-
-    private func isOnHangingCamera(_ swift: CGPoint) -> Bool {
-        expansion == .camera
-            && DotsLayout.dotID(
-                at: swift,
-                expansion: expansion,
-                cameraOffset: cameraOffset
-            ) == nil
-            && DotsLayout.containsInteractiveContent(
-                swift,
-                expansion: expansion,
-                cameraOffset: cameraOffset,
-                taskCount: taskCount
-            )
-    }
-
-    private func beginCameraDrag(_ event: NSEvent) -> Bool {
-        let swift = swiftPoint(for: event)
-        guard hasCompletedCameraMorph,
-              !isCameraMorphInProgress,
-              isOnHangingCamera(swift) else { return false }
-        cameraDragStartScreen = NSEvent.mouseLocation
-        cameraDragOriginOffset = pointerState?.cameraOffset ?? cameraOffset
-        cameraDidDrag = false
-        return true
-    }
-
-    private func updateCameraDrag(_ event: NSEvent) -> Bool {
-        guard let start = cameraDragStartScreen else { return false }
-        let screen = NSEvent.mouseLocation
-        let dx = screen.x - start.x
-        let dy = start.y - screen.y
-        if hypot(dx, dy) >= 4 {
-            cameraDidDrag = true
-        }
-        pointerState?.setCameraOffset(
-            CGSize(
-                width: cameraDragOriginOffset.width + dx,
-                height: cameraDragOriginOffset.height + dy
-            )
-        )
-        return true
-    }
-
-    private func endCameraDrag(_ event: NSEvent) -> Bool {
-        guard cameraDragStartScreen != nil else { return false }
-        if !cameraDidDrag {
-            pointerState?.requestActivation(of: .mirror)
-        }
-        cameraDragStartScreen = nil
-        cameraDidDrag = false
-        return true
     }
 
     func captureHomeOrbs() {
@@ -859,57 +1014,6 @@ final class LauncherRootView: NSView {
         }
     }
 
-    @discardableResult
-    func animateCameraCollapse(completion: @escaping () -> Void) -> Bool {
-        let ids = DotRegistry.visibleIDs(from: DotRegistry.defaultActiveIDs)
-        guard let mirrorIndex = ids.firstIndex(of: .mirror) else { return false }
-        let orb = cameraMorphingOrb
-            ?? (orbViews.indices.contains(mirrorIndex) ? orbViews[mirrorIndex] : nil)
-        guard let orb else { return false }
-
-        sendOrbsToFront()
-
-        let destination = dockedOrbFrame(at: mirrorIndex)
-        let wasHidden = orb.isHidden
-        if wasHidden, !orb.isSpringing, let hang = hangingCameraRect() {
-            orb.frame = hang
-        }
-        cameraMorphingOrb = orb
-        hasCompletedCameraMorph = false
-        isCameraMorphInProgress = true
-        orb.isHidden = false
-        orb.alphaValue = 1
-        updateCameraMask(with: orb.frame)
-
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            orb.frame = destination
-            updateCameraMask(with: destination)
-            orb.alphaValue = 1
-            pointerState?.setCameraReveal(false)
-            pointerState?.setCameraMaskFrame(nil)
-            cameraTransitionHitAnchor.disarm()
-            cameraMorphingOrb = nil
-            isCameraMorphInProgress = false
-            completion()
-            return true
-        }
-
-        orb.springTo(destination, onFrame: { [weak self] frame in
-            self?.updateCameraMask(with: frame)
-        }) { [weak self, weak orb] in
-            guard let self, let orb, self.cameraMorphingOrb === orb else { return }
-            orb.alphaValue = 1
-            self.pointerState?.setCameraReveal(false)
-            self.pointerState?.setCameraMaskFrame(nil)
-            self.cameraTransitionHitAnchor.disarm()
-            self.cameraMorphingOrb = nil
-            self.isCameraMorphInProgress = false
-            completion()
-        }
-
-        return true
-    }
-
     private func layoutOrbs() {
         let ids = DotRegistry.visibleIDs(from: DotRegistry.defaultActiveIDs)
         let frames = DotsLayout.nodeFrames(
@@ -917,9 +1021,9 @@ final class LauncherRootView: NSView {
             cameraOffset: .zero,
             dotIDs: ids
         )
-
         while orbViews.count < ids.count {
             let orb = DotOrbView(frame: .zero)
+            orb.material = dotMaterial
             addSubview(orb)
             orbViews.append(orb)
         }
@@ -927,21 +1031,9 @@ final class LauncherRootView: NSView {
             orbViews.removeLast().removeFromSuperview()
         }
 
-        if expansion != .camera, (isCameraMorphInProgress || hasCompletedCameraMorph) {
-            cameraMorphingOrb?.layer?.removeAllAnimations()
-            cameraMorphingOrb?.alphaValue = 1
-            cameraMorphingOrb = nil
-            isCameraMorphInProgress = false
-            hasCompletedCameraMorph = false
-            cameraTransitionHitAnchor.disarm()
-        }
-
         for index in ids.indices {
             let orb = orbViews[index]
-            let isMirrorCameraMorph = expansion == .camera && ids[index] == .mirror
-            let isCurrentCameraMorph = (isCameraMorphInProgress || hasCompletedCameraMorph)
-                && cameraMorphingOrb === orb
-            let preservesAnimatedFrame = isCurrentCameraMorph || launchingOrbIDs.contains(ids[index])
+            let preservesAnimatedFrame = launchingOrbIDs.contains(ids[index])
             let docked = appKitRect(from: frames[index])
             if !preservesAnimatedFrame {
                 if let homes = homeOrbScreenOrigins,
@@ -957,11 +1049,7 @@ final class LauncherRootView: NSView {
             }
             orb.layer?.contentsScale = window?.backingScaleFactor ?? 2
             orb.id = ids[index]
-            if isMirrorCameraMorph {
-                startCameraMorphIfNeeded(for: orb)
-            } else {
-                orb.isHidden = false
-            }
+            orb.isHidden = false
             orb.onClick = { [weak self] in
                 self?.activateDot(ids[index])
             }
@@ -979,80 +1067,6 @@ final class LauncherRootView: NSView {
             }
         }
 
-    }
-
-    private func startCameraMorphIfNeeded(for orb: DotOrbView) {
-        guard !hasCompletedCameraMorph else { return }
-        guard let destination = hangingCameraRect() else { return }
-
-        // A fast reopen reverses the active collapse rather than allowing its
-        // stale completion to restore the collapsed panel over the new camera.
-        if isCameraMorphInProgress, cameraMorphingOrb === orb {
-            pointerState?.setCameraReveal(true)
-            orb.isHidden = false
-            orb.alphaValue = 1
-            orb.springTo(destination, onFrame: { [weak self] frame in
-                self?.updateCameraMask(with: frame)
-            }) { [weak self, weak orb] in
-                guard let self, let orb, self.cameraMorphingOrb === orb else { return }
-                self.finishCameraExpand(orb)
-            }
-            return
-        }
-
-        cameraMorphingOrb = orb
-        isCameraMorphInProgress = true
-        hasCompletedCameraMorph = false
-        pointerState?.setCameraReveal(true)
-        updateCameraMask(with: orb.frame)
-        orb.isHidden = false
-        orb.alphaValue = 1
-        sendOrbsToFront()
-
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            orb.frame = destination
-            finishCameraExpand(orb)
-            return
-        }
-
-        orb.springTo(destination, onFrame: { [weak self] frame in
-            self?.updateCameraMask(with: frame)
-        }) { [weak self, weak orb] in
-            guard let self, let orb, self.cameraMorphingOrb === orb else { return }
-            self.finishCameraExpand(orb)
-        }
-    }
-
-    private func finishCameraExpand(_ orb: DotOrbView) {
-        hasCompletedCameraMorph = true
-        isCameraMorphInProgress = false
-        addSubview(hostingView)
-        pointerState?.setCameraMaskFrame(swiftRect(from: orb.frame))
-        cameraTransitionHitAnchor.disarm()
-        orb.isHidden = false
-        orb.alphaValue = 0
-    }
-
-    private func sendOrbsToFront() {
-        for orb in orbViews {
-            addSubview(orb)
-        }
-    }
-
-    private func hangingCameraRect() -> CGRect? {
-        DotsLayout.hangingFrame(
-            expansion: .camera,
-            cameraOffset: cameraOffset
-        ).map(appKitRect(from:))
-    }
-
-    private func updateCameraMask(with appKitFrame: CGRect) {
-        pointerState?.setCameraMaskFrame(swiftRect(from: appKitFrame))
-    }
-
-    private func updateCameraMaskForCurrentFrame() {
-        guard hasCompletedCameraMorph, let hang = hangingCameraRect() else { return }
-        updateCameraMask(with: hang)
     }
 
     private func dockedOrbFrame(at index: Int) -> CGRect {
@@ -1081,16 +1095,6 @@ final class LauncherRootView: NSView {
 
     private func swiftPoint(_ appKit: CGPoint) -> CGPoint {
         isFlipped ? appKit : CGPoint(x: appKit.x, y: bounds.height - appKit.y)
-    }
-
-    private func swiftRect(from appKit: CGRect) -> CGRect {
-        guard !isFlipped else { return appKit }
-        return CGRect(
-            x: appKit.minX,
-            y: bounds.height - appKit.maxY,
-            width: appKit.width,
-            height: appKit.height
-        )
     }
 
     private func appKitRect(from swift: CGRect) -> CGRect {

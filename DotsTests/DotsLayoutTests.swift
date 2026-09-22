@@ -9,62 +9,190 @@ final class DotsLayoutTests: XCTestCase {
     private let twoDots: [DotID] = [.mirror, .tasks]
 
     @MainActor
-    func testCameraMaskTracksTheExpandingDotFrame() {
+    func testCameraActivationAndDismissalAreIndependentStateChanges() {
         let pointer = LauncherPointerState()
-        let dot = CGRect(x: 122, y: 8, width: 16, height: 16)
-        let camera = CGRect(x: 50, y: 24, width: 160, height: 160)
 
-        pointer.setCameraReveal(true)
-        pointer.setCameraMaskFrame(dot)
-        XCTAssertTrue(pointer.cameraReveal)
-        XCTAssertEqual(pointer.cameraMaskFrame, dot)
+        pointer.requestActivation(of: .mirror)
+        XCTAssertEqual(pointer.requestedActivation, .mirror)
+        XCTAssertEqual(pointer.activationSequence, 1)
 
-        pointer.setCameraMaskFrame(camera)
-        XCTAssertEqual(pointer.cameraMaskFrame, camera)
+        pointer.requestDismissal()
+        XCTAssertNil(pointer.requestedActivation)
+        XCTAssertEqual(pointer.dismissalSequence, 1)
+    }
+
+    @MainActor
+    func testCameraCloseActivationBypassesOpenDebounce() {
+        let pointer = LauncherPointerState()
+
+        pointer.requestActivation(of: .mirror)
+        let openSequence = pointer.activationSequence
+
+        pointer.requestActivation(of: .mirror, ignoreDebounce: true)
+
+        XCTAssertEqual(pointer.activationSequence, openSequence + 1)
     }
 
     func testRequestedDotAndCameraDiameters() {
         XCTAssertEqual(DotsLayout.nodeDiameter, 16)
         XCTAssertEqual(DotsLayout.cameraDiameter, 160)
-        XCTAssertEqual(DotsLayout.launchCadence, 0.08)
         XCTAssertEqual(
-            DotsLayout.taskListSize(taskCount: 0),
-            CGSize(width: 300, height: 168)
+            DotsLayout.cameraPanelSize,
+            CGSize(width: 240, height: 240)
         )
+        XCTAssertEqual(DotsLayout.cameraPanelGap, 16)
+        XCTAssertEqual(DotsLayout.cameraMinimumSurfaceWidth, 240)
+        XCTAssertEqual(
+            CameraPanelStyle.rectangle.minimumPanelSize,
+            CGSize(width: 240, height: 360)
+        )
+        XCTAssertEqual(
+            CameraPanelStyle.circle.minimumPanelSize,
+            CGSize(width: 240, height: 240)
+        )
+        XCTAssertEqual(DotsLayout.dotHitSlop, 12)
+        XCTAssertEqual(DotsLayout.dotHitDiameter, 40)
+        XCTAssertEqual(DotsLayout.cameraControlSize, 32)
+        XCTAssertEqual(DotsLayout.cameraControlGap, 8)
+        XCTAssertEqual(DotsLayout.cameraControlEdgePadding, 16)
+        XCTAssertEqual(CameraPanelStyle.transitionDuration, 0.2)
+        XCTAssertEqual(
+            CameraPanelStyle.rectangle.size,
+            CGSize(width: 240, height: 360)
+        )
+        XCTAssertEqual(CameraPanelStyle.circle.size, CGSize(width: 240, height: 240))
+        XCTAssertEqual(
+            CameraPanelStyle.rectangle.panelSize(for: .small),
+            CGSize(width: 160, height: 240)
+        )
+        XCTAssertEqual(
+            CameraPanelStyle.circle.panelSize(for: .small),
+            CGSize(width: 160, height: 160)
+        )
+        XCTAssertEqual(
+            CameraPanelStyle.rectangle.panelSize,
+            CGSize(width: 240, height: 360)
+        )
+        XCTAssertEqual(CameraPanelStyle.circle.panelSize, CGSize(width: 240, height: 240))
+        XCTAssertEqual(
+            CameraPanelStyle.rectangle.size.width / CameraPanelStyle.rectangle.size.height,
+            2.0 / 3.0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(DotsLayout.launchCadence, 0.08)
+        XCTAssertEqual(DotsLayout.taskListWidth, 434)
+        XCTAssertEqual(DotsLayout.taskRowHeight, 51)
+        XCTAssertEqual(DotsLayout.taskFontSize, 16)
+        XCTAssertEqual(DotsLayout.taskRowSpacing, 6)
+        XCTAssertEqual(DotsLayout.taskContentLeadingPadding, 12)
+        XCTAssertEqual(DotsLayout.taskContentTrailingPadding, 16)
+        XCTAssertEqual(DotsLayout.taskPanelPadding, 16)
+        XCTAssertEqual(DotsLayout.taskCornerRadius, 18)
+        XCTAssertEqual(
+            DotsLayout.taskListContentSize(taskCount: 0),
+            CGSize(width: 434, height: 51)
+        )
+        XCTAssertEqual(DotsLayout.taskListSize(taskCount: 0), CGSize(width: 466, height: 83))
         XCTAssertGreaterThanOrEqual(DotsLayout.taskControlHitSize, 22)
     }
 
-    func testTaskPanelGrowsForEveryTaskUntilItsHeightCap() {
-        let empty = DotsLayout.taskListSize(taskCount: 0)
-        let oneTask = DotsLayout.taskListSize(taskCount: 1)
-        let twoTasks = DotsLayout.taskListSize(taskCount: 2)
-        let manyTasks = DotsLayout.taskListSize(taskCount: 100)
+    @MainActor
+    func testCameraPanelStyleDefaultsToCircle() {
+        let model = CameraPanelModel()
 
-        XCTAssertEqual(oneTask.height - empty.height, 30)
-        XCTAssertEqual(twoTasks.height - oneTask.height, 30)
-        XCTAssertEqual(manyTasks.height, 420)
+        model.resetStyle()
+
+        XCTAssertEqual(model.style, .circle)
+        XCTAssertEqual(model.style.size, CGSize(width: 240, height: 240))
     }
 
-    func testTaskHitTestingGrowsWithTheVisiblePanel() {
+    @MainActor
+    func testCameraPanelStyleTogglesBetweenCircleAndRectangle() {
+        let model = CameraPanelModel()
+
+        XCTAssertEqual(model.style, .circle)
+
+        model.toggleStyle()
+        XCTAssertEqual(model.style, .rectangle)
+
+        model.toggleStyle()
+        XCTAssertEqual(model.style, .circle)
+    }
+
+    @MainActor
+    func testCameraPanelSizeTogglesBetweenStandardAndSmall() {
+        let model = CameraPanelModel()
+
+        XCTAssertEqual(model.sizeMode, .standard)
+        XCTAssertEqual(model.style.panelSize(for: model.sizeMode), CGSize(width: 240, height: 240))
+
+        model.toggleSize()
+        XCTAssertEqual(model.sizeMode, .small)
+        XCTAssertEqual(model.style.panelSize(for: model.sizeMode), CGSize(width: 160, height: 160))
+
+        model.toggleSize()
+        XCTAssertEqual(model.sizeMode, .standard)
+    }
+
+    @MainActor
+    func testCameraPanelResetClearsAnInFlightTransition() {
+        let model = CameraPanelModel()
+
+        model.isTransitioning = true
+        model.toggleSize()
+        XCTAssertTrue(model.isTransitioning)
+
+        model.resetStyle()
+
+        XCTAssertFalse(model.isTransitioning)
+        XCTAssertEqual(model.sizeMode, .standard)
+    }
+
+    func testCameraShapeAnimatesFromRoundedRectangleToCircle() {
+        let frame = CGRect(x: 0, y: 0, width: 200, height: 200)
+        let shape = MorphingCameraShape(progress: 0)
+
+        XCTAssertEqual(shape.animatableData, 0)
+        var circle = shape
+        circle.animatableData = 1
+        XCTAssertEqual(circle.animatableData, 1)
+        XCTAssertEqual(circle.path(in: frame).boundingRect, frame)
+    }
+
+    func testTaskStackGrowsFromTheAddTaskRowUntilItsVisibleRowLimit() {
+        let empty = DotsLayout.taskListSize(taskCount: 0)
+        let oneTask = DotsLayout.taskListSize(taskCount: 1)
+        let manyTasks = DotsLayout.taskListSize(taskCount: 100)
+
+        XCTAssertEqual(empty, CGSize(width: 466, height: 83))
+        XCTAssertEqual(oneTask, CGSize(width: 466, height: 140))
+        XCTAssertEqual(manyTasks, CGSize(width: 466, height: 368))
+    }
+
+    func testTaskHitTestingUsesTheCompactStackBounds() {
         let emptyPanel = DotsLayout.hangingFrame(expansion: .tasks, taskCount: 0, dotIDs: twoDots)!
-        let pointInFirstGrowthRow = CGPoint(
+        let pointInsidePanel = CGPoint(
             x: emptyPanel.midX,
-            y: emptyPanel.maxY + 15
+            y: emptyPanel.minY + 15
+        )
+        let pointBelowPanel = CGPoint(
+            x: emptyPanel.midX,
+            y: emptyPanel.maxY + 1
         )
 
-        XCTAssertFalse(
+        XCTAssertTrue(
             DotsLayout.containsInteractiveContent(
-                pointInFirstGrowthRow,
+                pointInsidePanel,
                 expansion: .tasks,
                 taskCount: 0,
                 dotIDs: twoDots
             )
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             DotsLayout.containsInteractiveContent(
-                pointInFirstGrowthRow,
+                pointBelowPanel,
                 expansion: .tasks,
-                taskCount: 1,
+                taskCount: 0,
                 dotIDs: twoDots
             )
         )
@@ -74,7 +202,7 @@ final class DotsLayoutTests: XCTestCase {
         XCTAssertEqual(DotsLayout.rowContentSize(dotCount: 2), CGSize(width: 48, height: 16))
         XCTAssertEqual(
             DotsLayout.canvasSize(cameraOffset: .zero, dotIDs: twoDots),
-            CGSize(width: 324, height: 464)
+            CGSize(width: 504, height: 550)
         )
     }
 
@@ -91,6 +219,44 @@ final class DotsLayoutTests: XCTestCase {
         )
     }
 
+    func testCameraPanelLeavesPaddingBetweenTheDotAndWindow() {
+        let anchor = CGRect(x: 100, y: 800, width: 16, height: 16)
+        let rectangle = DotsLayout.cameraPanelFrame(
+            anchoredTo: anchor,
+            style: .rectangle
+        )
+        let circle = DotsLayout.cameraPanelFrame(
+            anchoredTo: anchor,
+            style: .circle
+        )
+
+        XCTAssertEqual(
+            rectangle.minX,
+            anchor.midX - (CameraPanelStyle.rectangle.size.width / 2)
+        )
+        XCTAssertEqual(rectangle.maxY, anchor.minY - DotsLayout.cameraPanelGap)
+        XCTAssertEqual(rectangle.size, CameraPanelStyle.rectangle.panelSize)
+        XCTAssertEqual(
+            circle.minX,
+            anchor.midX - (CameraPanelStyle.circle.size.width / 2)
+        )
+        XCTAssertEqual(circle.maxY, anchor.minY - DotsLayout.cameraPanelGap)
+        XCTAssertEqual(circle.size, CameraPanelStyle.circle.panelSize)
+    }
+
+    func testCameraResizeKeepsItsCenterAndTopEdgeStable() {
+        let currentFrame = CGRect(x: 200, y: 300, width: 160, height: 160)
+        let targetSize = CGSize(width: 240, height: 240)
+        let targetFrame = DotsLayout.cameraPanelResizeFrame(
+            from: currentFrame,
+            to: targetSize
+        )
+
+        XCTAssertEqual(targetFrame.midX, currentFrame.midX)
+        XCTAssertEqual(targetFrame.maxY, currentFrame.maxY)
+        XCTAssertEqual(targetFrame.size, targetSize)
+    }
+
     func testLaunchFrameStartsAboveThePanelWithoutChangingDotSize() {
         let docked = CGRect(x: 80, y: 12, width: 16, height: 16)
         let start = DotsLayout.launchStartFrame(docked: docked, canvasHeight: 40)
@@ -100,14 +266,14 @@ final class DotsLayoutTests: XCTestCase {
         XCTAssertEqual(start.size, docked.size)
     }
 
-    func testTaskPanelHangsBelowAVisible16PointDot() {
+    func testTaskPanelIsHorizontallyCenteredBelowTheDotRow() {
         XCTAssertEqual(
             DotsLayout.hangingFrame(expansion: .tasks, taskCount: 0, dotIDs: twoDots),
-            CGRect(x: 12, y: 32, width: 300, height: 168)
+            CGRect(x: 19, y: 32, width: 466, height: 83)
         )
         XCTAssertEqual(
             DotsLayout.hangingFrame(expansion: .tasks, taskCount: 0, dotIDs: twoDots)?.midX,
-            DotsLayout.nodeFrames(expansion: .tasks, dotIDs: twoDots)[1].midX
+            DotsLayout.rowCenterX(cameraOffset: .zero, dotIDs: twoDots)
         )
         XCTAssertTrue(
             DotsLayout.visibleNodeFrames(expansion: .tasks, dotIDs: twoDots)
@@ -119,8 +285,8 @@ final class DotsLayoutTests: XCTestCase {
         let frames = DotsLayout.nodeFrames(expansion: .none, dotIDs: twoDots)
 
         XCTAssertEqual(frames.count, 2)
-        XCTAssertEqual(frames[0], CGRect(x: 122, y: 8, width: 16, height: 16))
-        XCTAssertEqual(frames[1], CGRect(x: 154, y: 8, width: 16, height: 16))
+        XCTAssertEqual(frames[0], CGRect(x: 228, y: 8, width: 16, height: 16))
+        XCTAssertEqual(frames[1], CGRect(x: 260, y: 8, width: 16, height: 16))
     }
 
     func testFeaturePanelsKeepTheDotRowFixedForEveryState() {
@@ -132,21 +298,24 @@ final class DotsLayoutTests: XCTestCase {
         XCTAssertEqual(tasks, collapsed)
     }
 
-    func testExpandedPanelStaysAlignedWithItsDot() {
+    func testExpandedPanelStaysCenteredWithTheDotRow() {
         let frames = DotsLayout.nodeFrames(expansion: .tasks, dotIDs: twoDots)
         let list = DotsLayout.hangingFrame(expansion: .tasks, dotIDs: twoDots)!
 
-        XCTAssertEqual(frames[1], CGRect(x: 154, y: 8, width: 16, height: 16))
-        XCTAssertEqual(list.minX, DotsLayout.glassInset)
+        XCTAssertEqual(frames[1], CGRect(x: 260, y: 8, width: 16, height: 16))
+        XCTAssertEqual(list.minX, 19)
         XCTAssertGreaterThan(list.minY, frames[1].maxY)
-        XCTAssertEqual(list.midX, frames[1].midX)
+        XCTAssertEqual(
+            list.midX,
+            DotsLayout.rowCenterX(cameraOffset: .zero, dotIDs: twoDots)
+        )
     }
 
-    func testHitTestingIgnoresTransparentPadding() {
+    func testHitTestingIgnoresTransparentPadding() throws {
         XCTAssertFalse(DotsLayout.containsInteractiveContent(CGPoint(x: 2, y: 2), expansion: .none, dotIDs: twoDots))
-        XCTAssertFalse(DotsLayout.containsInteractiveContent(CGPoint(x: 222, y: 16), expansion: .none, dotIDs: twoDots))
+        XCTAssertFalse(DotsLayout.containsInteractiveContent(CGPoint(x: 300, y: 16), expansion: .none, dotIDs: twoDots))
         XCTAssertFalse(DotsLayout.containsInteractiveContent(CGPoint(x: 2, y: 2), expansion: .camera, dotIDs: twoDots))
-        let camera = try! XCTUnwrap(DotsLayout.hangingFrame(expansion: .camera, dotIDs: twoDots))
+        let camera = try XCTUnwrap(DotsLayout.hangingFrame(expansion: .camera, dotIDs: twoDots))
         XCTAssertFalse(
             DotsLayout.containsInteractiveContent(
                 CGPoint(x: camera.maxX + 2, y: camera.midY),
@@ -161,6 +330,10 @@ final class DotsLayoutTests: XCTestCase {
         let dots = DotsLayout.nodeFrames(expansion: .none, dotIDs: twoDots)
         let camera = DotsLayout.hangingFrame(expansion: .camera, dotIDs: twoDots)!
         let tasks = DotsLayout.hangingFrame(expansion: .tasks, taskCount: 0, dotIDs: twoDots)!
+        let pointOutsideDots = CGPoint(
+            x: dots[1].maxX + DotsLayout.dotHitSlop + 1,
+            y: dots[1].midY
+        )
 
         XCTAssertTrue(
             DotsLayout.containsInteractiveContent(
@@ -169,8 +342,14 @@ final class DotsLayoutTests: XCTestCase {
                 dotIDs: twoDots
             )
         )
-        XCTAssertFalse(DotsLayout.containsInteractiveContent(CGPoint(x: 146, y: 2), expansion: .none, dotIDs: twoDots))
-        XCTAssertFalse(DotsLayout.containsInteractiveContent(CGPoint(x: 276, y: 16), expansion: .none, dotIDs: twoDots))
+        XCTAssertFalse(DotsLayout.containsInteractiveContent(CGPoint(x: 120, y: 2), expansion: .none, dotIDs: twoDots))
+        XCTAssertFalse(
+            DotsLayout.containsInteractiveContent(
+                pointOutsideDots,
+                expansion: .none,
+                dotIDs: twoDots
+            )
+        )
         XCTAssertTrue(
             DotsLayout.containsInteractiveContent(
                 CGPoint(x: camera.midX, y: camera.midY),
@@ -178,7 +357,13 @@ final class DotsLayoutTests: XCTestCase {
                 dotIDs: twoDots
             )
         )
-        XCTAssertFalse(DotsLayout.containsInteractiveContent(CGPoint(x: 276, y: 16), expansion: .camera, dotIDs: twoDots))
+        XCTAssertFalse(
+            DotsLayout.containsInteractiveContent(
+                pointOutsideDots,
+                expansion: .camera,
+                dotIDs: twoDots
+            )
+        )
         XCTAssertTrue(
             DotsLayout.containsInteractiveContent(
                 CGPoint(x: dots[0].midX, y: dots[0].midY),
@@ -213,7 +398,10 @@ final class DotsLayoutTests: XCTestCase {
             let sourceIndex = state == .camera ? 0 : 1
             let source = DotsLayout.nodeFrames(expansion: state, dotIDs: twoDots)[sourceIndex]
             if let destination = DotsLayout.hangingFrame(expansion: state, dotIDs: twoDots) {
-                XCTAssertEqual(frame.minX + destination.midX, frame.minX + source.midX)
+                let expectedCenter = state == .tasks
+                    ? DotsLayout.rowCenterX(cameraOffset: .zero, dotIDs: twoDots)
+                    : source.midX
+                XCTAssertEqual(frame.minX + destination.midX, frame.minX + expectedCenter)
             }
         }
     }
@@ -254,7 +442,10 @@ final class DotsLayoutTests: XCTestCase {
         let offset = CGSize(width: 80, height: 40)
         let hang = DotsLayout.hangingFrame(expansion: .camera, cameraOffset: offset, dotIDs: twoDots)!
         let firstDot = DotsLayout.nodeFrames(expansion: .camera, cameraOffset: offset, dotIDs: twoDots)[0]
-        let emptySpaceAboveDot = CGPoint(x: firstDot.midX, y: 1)
+        let emptySpaceAboveDot = CGPoint(
+            x: firstDot.midX,
+            y: firstDot.minY - DotsLayout.dotHitSlop - 1
+        )
 
         XCTAssertTrue(
             DotsLayout.containsInteractiveContent(
@@ -286,11 +477,36 @@ final class DotsLayoutTests: XCTestCase {
 
     func testDotHitTargetIsLargerThanTheVisibleFill() {
         let firstDot = DotsLayout.nodeFrames(expansion: .none, dotIDs: twoDots)[0]
-        let pointOutsideFill = CGPoint(x: firstDot.minX - 4, y: firstDot.midY)
+        let pointOutsideFill = CGPoint(x: firstDot.minX - 12, y: firstDot.midY)
+        let pointOutsideHitTarget = CGPoint(x: firstDot.minX - 13, y: firstDot.midY)
 
         XCTAssertFalse(firstDot.contains(pointOutsideFill))
         XCTAssertTrue(
-            DotsLayout.containsInteractiveContent(pointOutsideFill, expansion: .none)
+            DotsLayout.containsInteractiveContent(
+                pointOutsideFill,
+                expansion: .none,
+                dotIDs: twoDots
+            )
+        )
+        XCTAssertFalse(
+            DotsLayout.containsInteractiveContent(
+                pointOutsideHitTarget,
+                expansion: .none,
+                dotIDs: twoDots
+            )
+        )
+    }
+
+    func testExpandedDotHitTargetsPreferTheNearestDot() {
+        let frames = DotsLayout.nodeFrames(expansion: .none, dotIDs: twoDots)
+
+        XCTAssertEqual(
+            DotsLayout.dotID(
+                at: CGPoint(x: frames[1].midX - 7, y: frames[0].midY),
+                expansion: .none,
+                dotIDs: twoDots
+            ),
+            .tasks
         )
     }
 
@@ -299,7 +515,7 @@ final class DotsLayoutTests: XCTestCase {
 
         XCTAssertEqual(
             DotsLayout.dotID(
-                at: CGPoint(x: frames[0].minX - 4, y: frames[0].midY),
+                at: CGPoint(x: frames[0].minX - 12, y: frames[0].midY),
                 expansion: .none,
                 dotIDs: twoDots
             ),
@@ -315,7 +531,7 @@ final class DotsLayoutTests: XCTestCase {
         )
         XCTAssertNil(
             DotsLayout.dotID(
-                at: CGPoint(x: 200, y: 16),
+                at: CGPoint(x: 300, y: 16),
                 expansion: .none,
                 dotIDs: twoDots
             )
@@ -333,33 +549,39 @@ final class DotOrbViewTests: XCTestCase {
         XCTAssertEqual(orb.subviews.count, 1)
         XCTAssertEqual(orb.subviews[0].frame, orb.bounds)
     }
+
+    func testOrbCanSwitchMaterialWithoutChangingItsHitView() {
+        let orb = DotOrbView(frame: CGRect(x: 0, y: 0, width: 16, height: 16))
+
+        orb.material = .regular
+
+        XCTAssertEqual(orb.subviews.count, 1)
+        XCTAssertEqual(orb.subviews[0].frame, orb.bounds)
+    }
 }
 
 @MainActor
-final class CameraTransitionHitAnchorViewTests: XCTestCase {
-    func testArmKeepsTheLastCameraClickInteractive() {
-        let anchor = CameraTransitionHitAnchorView(frame: .zero)
-        let click = CGPoint(x: 120, y: 240)
+final class DotMaterialSettingsTests: XCTestCase {
+    func testLiquidIsTheDefaultMaterial() throws {
+        let suiteName = "DotMaterialSettingsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        anchor.arm(at: click)
-
-        XCTAssertFalse(anchor.isHidden)
-        XCTAssertEqual(anchor.frame.size, CGSize(width: 28, height: 28))
-        XCTAssertEqual(CGPoint(x: anchor.frame.midX, y: anchor.frame.midY), click)
-        XCTAssertTrue(anchor.contains(click))
-        XCTAssertGreaterThan(anchor.layer?.backgroundColor?.alpha ?? 0, 0)
-        XCTAssertLessThan(anchor.layer?.backgroundColor?.alpha ?? 1, 0.01)
+        XCTAssertEqual(DotAppearanceSettings(defaults: defaults).material, .liquid)
     }
 
-    func testDisarmRestoresClickThroughOutsideTheAnimation() {
-        let anchor = CameraTransitionHitAnchorView(frame: .zero)
-        let click = CGPoint(x: 120, y: 240)
-        anchor.arm(at: click)
+    func testMaterialSelectionPersists() throws {
+        let suiteName = "DotMaterialSettingsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        anchor.disarm()
+        let settings = DotAppearanceSettings(defaults: defaults)
+        settings.material = .thin
 
-        XCTAssertTrue(anchor.isHidden)
-        XCTAssertFalse(anchor.contains(click))
+        XCTAssertEqual(
+            DotAppearanceSettings(defaults: defaults).material,
+            .thin
+        )
     }
 }
 
@@ -486,11 +708,12 @@ final class CameraLogicTests: XCTestCase {
         XCTAssertFalse(CameraRuntimeErrorPolicy.shouldRetry(alreadyRetried: true, error: error))
     }
 
-    func testOtherRuntimeErrorsDoNotRetry() {
+    func testRapidReopenRuntimeErrorRetriesOnce() {
         let error = NSError(domain: AVFoundationErrorDomain, code: -11800)
 
-        XCTAssertFalse(CameraRuntimeErrorPolicy.shouldRetry(alreadyRetried: false, error: error))
-        XCTAssertFalse(CameraRuntimeErrorPolicy.isMediaServicesReset(nil))
+        XCTAssertTrue(CameraRuntimeErrorPolicy.shouldRetry(alreadyRetried: false, error: error))
+        XCTAssertFalse(CameraRuntimeErrorPolicy.shouldRetry(alreadyRetried: true, error: error))
+        XCTAssertFalse(CameraRuntimeErrorPolicy.isRecoverable(nil))
     }
 }
 
@@ -519,6 +742,13 @@ final class TaskStoreTests: XCTestCase {
         XCTAssertEqual(store.items.count, 1)
         XCTAssertEqual(item?.title, "Buy milk")
         XCTAssertEqual(item?.isDone, false)
+    }
+
+    func testNewTasksAppearBeforeExistingTasks() {
+        _ = store.add("Existing")
+        _ = store.add("New")
+
+        XCTAssertEqual(store.visibleItems.map(\.title), ["New", "Existing"])
     }
 
     func testAddIgnoresBlankTitles() {
@@ -570,6 +800,16 @@ final class TaskStoreTests: XCTestCase {
         XCTAssertEqual(store.draft, "  ")
     }
 
+    func testBackspaceOnAddDraftRecallsTheNewestTaskForEditing() {
+        _ = store.add("First")
+        let newest = store.add("Newest")!
+
+        XCTAssertTrue(store.handleBackspaceOnAddDraft())
+
+        XCTAssertEqual(store.editingTaskID, newest.id)
+        XCTAssertEqual(store.draft, "Newest")
+    }
+
     func testBackspaceInEmptyComposerRecallsThePreviousTaskForEditing() {
         let keep = store.add("Keep")!
         let edit = store.add("Edit me")!
@@ -578,8 +818,8 @@ final class TaskStoreTests: XCTestCase {
 
         XCTAssertEqual(store.draft, "Edit me")
         XCTAssertEqual(store.editingTaskID, edit.id)
-        XCTAssertEqual(store.visibleItems.map(\.id), [keep.id])
-        XCTAssertEqual(store.items.map(\.id), [keep.id, edit.id])
+        XCTAssertEqual(store.visibleItems.map(\.id), [edit.id, keep.id])
+        XCTAssertEqual(store.items.map(\.id), [edit.id, keep.id])
     }
 
     func testBackspaceInEmptyComposerDoesNothingWithoutPreviousTasks() {
@@ -611,7 +851,7 @@ final class TaskStoreTests: XCTestCase {
         XCTAssertEqual(store.items.map(\.id), [keep.id])
         XCTAssertEqual(store.editingTaskID, keep.id)
         XCTAssertEqual(store.draft, "Keep")
-        XCTAssertTrue(store.visibleItems.isEmpty)
+        XCTAssertEqual(store.visibleItems.map(\.id), [keep.id])
         let reloaded = TaskStore(defaults: defaults, storageKey: "tasks")
         XCTAssertEqual(reloaded.items.map(\.id), [keep.id])
     }
@@ -644,38 +884,178 @@ final class TaskStoreTests: XCTestCase {
         let second = store.add("Second")!
 
         XCTAssertTrue(store.moveTaskSelection(.up))
+        XCTAssertEqual(store.selectedTaskID, first.id)
+        XCTAssertTrue(store.moveTaskSelection(.up))
         XCTAssertEqual(store.selectedTaskID, second.id)
         XCTAssertTrue(store.moveTaskSelection(.up))
-        XCTAssertEqual(store.selectedTaskID, first.id)
-        XCTAssertTrue(store.moveTaskSelection(.up))
-        XCTAssertEqual(store.selectedTaskID, first.id)
+        XCTAssertEqual(store.selectedTaskID, second.id)
 
         store.clearTaskSelection()
 
         XCTAssertTrue(store.moveTaskSelection(.down))
+        XCTAssertEqual(store.selectedTaskID, second.id)
+        XCTAssertTrue(store.moveTaskSelection(.down))
         XCTAssertEqual(store.selectedTaskID, first.id)
         XCTAssertTrue(store.moveTaskSelection(.down))
-        XCTAssertEqual(store.selectedTaskID, second.id)
-        XCTAssertTrue(store.moveTaskSelection(.down))
-        XCTAssertEqual(store.selectedTaskID, second.id)
+        XCTAssertEqual(store.selectedTaskID, first.id)
     }
 
     func testEditingTheKeyboardSelectedTaskLoadsItIntoTheComposer() {
-        let first = store.add("First")!
-        _ = store.add("Second")!
+        _ = store.add("First")!
+        let second = store.add("Second")!
         XCTAssertTrue(store.moveTaskSelection(.down))
 
         XCTAssertTrue(store.editSelectedTask())
 
-        XCTAssertEqual(store.editingTaskID, first.id)
+        XCTAssertEqual(store.editingTaskID, second.id)
         XCTAssertNil(store.selectedTaskID)
-        XCTAssertEqual(store.draft, "First")
-        XCTAssertEqual(store.visibleItems.map(\.title), ["Second"])
+        XCTAssertEqual(store.draft, "Second")
+        XCTAssertEqual(store.visibleItems.map(\.title), ["Second", "First"])
+    }
+
+    func testEditingATaskByIDKeepsItVisibleForInlineEditing() {
+        let item = store.add("Click to edit")!
+
+        XCTAssertTrue(store.editTask(item.id))
+
+        XCTAssertEqual(store.editingTaskID, item.id)
+        XCTAssertEqual(store.draft, "Click to edit")
+        XCTAssertEqual(store.visibleItems.map(\.id), [item.id])
     }
 }
 
 @MainActor
 final class TaskComposerFocusTests: XCTestCase {
+    func testTaskListHitTestIncludesSpacingBetweenRows() throws {
+        let suiteName = "TaskListInteractionTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = TaskStore(defaults: defaults, storageKey: "tasks")
+        _ = store.add("First task")
+        _ = store.add("Second task")
+
+        let size = DotsLayout.taskListSize(taskCount: store.items.count)
+        let panel = NSPanel(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        defer { panel.orderOut(nil) }
+        let hostingView = NSHostingView(rootView: TaskListView(store: store))
+        hostingView.frame = panel.contentView?.bounds ?? NSRect(origin: .zero, size: size)
+        panel.contentView = hostingView
+        panel.orderFrontRegardless()
+        hostingView.layoutSubtreeIfNeeded()
+
+        let yFromTop = DotsLayout.taskPanelPadding
+            + DotsLayout.taskRowHeight
+            + (DotsLayout.taskRowSpacing / 2)
+        let gapPoint = CGPoint(
+            x: size.width / 2,
+            y: hostingView.isFlipped ? yFromTop : size.height - yFromTop
+        )
+
+        XCTAssertNotNil(hostingView.hitTest(gapPoint))
+    }
+
+    func testTaskListScrollViewportCanMovePastItsTopOffset() throws {
+        let suiteName = "TaskListScrollTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = TaskStore(defaults: defaults, storageKey: "tasks")
+        for index in 0..<6 {
+            _ = store.add("Task \(index)")
+        }
+
+        let size = DotsLayout.taskListSize(taskCount: store.items.count)
+        let panel = NSPanel(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        defer { panel.orderOut(nil) }
+        let hostingView = NSHostingView(rootView: TaskListView(store: store))
+        hostingView.frame = panel.contentView?.bounds ?? NSRect(origin: .zero, size: size)
+        panel.contentView = hostingView
+        panel.orderFrontRegardless()
+        hostingView.layoutSubtreeIfNeeded()
+
+        let scrollView = try XCTUnwrap(
+            firstDescendant(of: NSScrollView.self, in: hostingView)
+        )
+        scrollView.layoutSubtreeIfNeeded()
+        let viewportHeight = scrollView.contentView.bounds.height
+        let documentHeight = try XCTUnwrap(scrollView.documentView?.frame.height)
+
+        XCTAssertGreaterThan(documentHeight, viewportHeight)
+
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: 40))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+
+        XCTAssertGreaterThan(scrollView.contentView.bounds.minY, 0)
+    }
+
+    func testTaskListViewportHitTestResolvesInsideItsScrollView() throws {
+        let suiteName = "TaskListHitTestTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = TaskStore(defaults: defaults, storageKey: "tasks")
+        for index in 0..<6 {
+            _ = store.add("Task \(index)")
+        }
+
+        let size = DotsLayout.taskListSize(taskCount: store.items.count)
+        let panel = NSPanel(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        defer { panel.orderOut(nil) }
+        let hostingView = NSHostingView(rootView: TaskListView(store: store))
+        hostingView.frame = panel.contentView?.bounds ?? NSRect(origin: .zero, size: size)
+        panel.contentView = hostingView
+        panel.orderFrontRegardless()
+        hostingView.layoutSubtreeIfNeeded()
+
+        let scrollView = try XCTUnwrap(
+            firstDescendant(of: NSScrollView.self, in: hostingView)
+        )
+        let viewportPoint = hostingView.convert(
+            NSPoint(
+                x: scrollView.contentView.bounds.midX,
+                y: scrollView.contentView.bounds.midY
+            ),
+            from: scrollView.contentView
+        )
+        let hitView = try XCTUnwrap(hostingView.hitTest(viewportPoint))
+
+        XCTAssertTrue(
+            hitView === scrollView || hitView.isDescendant(of: scrollView),
+            "Expected viewport hit to stay inside the task scroll view, got \(hitView)"
+        )
+    }
+
+    @MainActor
+    func testTaskComposerCellUsesACompactVerticallyCenteredTitleRect() {
+        let cell = VerticallyCenteredTextFieldCell(textCell: "Add a task")
+        cell.font = .systemFont(ofSize: DotsLayout.taskFontSize, weight: .regular)
+        let bounds = NSRect(x: 0, y: 0, width: 300, height: DotsLayout.taskRowHeight)
+
+        let titleRect = cell.titleRect(forBounds: bounds)
+        let editorRect = cell.editorTextRect(forBounds: bounds)
+
+        XCTAssertLessThan(titleRect.height, bounds.height)
+        XCTAssertEqual(titleRect.midY, bounds.midY, accuracy: 0.5)
+        XCTAssertEqual(
+            editorRect.midY,
+            titleRect.midY + DotsLayout.taskEditingTextVerticalOffset,
+            accuracy: 0.5
+        )
+    }
+
     func testTaskComposerFieldEditorSupportsUndo() throws {
         let panel = NSPanel(
             contentRect: CGRect(x: 0, y: 0, width: 180, height: 40),
@@ -706,8 +1086,8 @@ final class TaskComposerFocusTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let store = TaskStore(defaults: defaults, storageKey: "tasks")
-        _ = store.add("First task")
-        let secondTask = try XCTUnwrap(store.add("Second task"))
+        let firstTask = try XCTUnwrap(store.add("First task"))
+        _ = try XCTUnwrap(store.add("Second task"))
 
         let panel = NSPanel(
             contentRect: CGRect(x: 0, y: 0, width: 300, height: 228),
@@ -728,26 +1108,32 @@ final class TaskComposerFocusTests: XCTestCase {
         }
         wait(for: [focusSettled], timeout: 1)
 
-        let field = try XCTUnwrap(firstDescendant(of: FocusableTextField.self, in: hostingView))
-        XCTAssertTrue(panel.makeFirstResponder(field))
-        let editor = try XCTUnwrap(field.currentEditor() as? NSTextView)
+        let addField = try XCTUnwrap(firstDescendant(of: FocusableTextField.self, in: hostingView))
+        XCTAssertTrue(panel.makeFirstResponder(addField))
+        let editor = try XCTUnwrap(addField.currentEditor() as? NSTextView)
 
         editor.keyDown(with: try keyEvent("\u{F700}", keyCode: 126, window: panel))
-        XCTAssertEqual(store.selectedTaskID, secondTask.id)
+        XCTAssertEqual(store.selectedTaskID, firstTask.id)
         editor.keyDown(with: try keyEvent("\u{F700}", keyCode: 126, window: panel))
         XCTAssertEqual(store.selectedTaskID, store.items.first?.id)
         editor.keyDown(with: try keyEvent("\u{F701}", keyCode: 125, window: panel))
-        XCTAssertEqual(store.selectedTaskID, secondTask.id)
+        XCTAssertEqual(store.selectedTaskID, firstTask.id)
 
         editor.keyDown(with: try keyEvent("\r", keyCode: 36, window: panel))
 
-        XCTAssertEqual(store.editingTaskID, secondTask.id)
+        let editingField = try waitForDescendant(
+            of: FocusableTextField.self,
+            in: hostingView,
+            matching: { $0.stringValue == "First task" }
+        )
+
+        XCTAssertEqual(store.editingTaskID, firstTask.id)
         XCTAssertNil(store.selectedTaskID)
-        XCTAssertEqual(store.draft, "Second task")
-        XCTAssertEqual(field.stringValue, "Second task")
+        XCTAssertEqual(store.draft, "First task")
+        XCTAssertEqual(editingField.stringValue, "First task")
         XCTAssertEqual(
-            editor.selectedRange(),
-            NSRange(location: "Second task".utf16.count, length: 0)
+            try XCTUnwrap(editingField.currentEditor() as? NSTextView).selectedRange(),
+            NSRange(location: "First task".utf16.count, length: 0)
         )
     }
 
@@ -778,10 +1164,10 @@ final class TaskComposerFocusTests: XCTestCase {
         }
         wait(for: [focusSettled], timeout: 1)
 
-        let field = try XCTUnwrap(firstDescendant(of: FocusableTextField.self, in: hostingView))
-        XCTAssertTrue(panel.makeFirstResponder(field))
-        let editor = try XCTUnwrap(field.currentEditor() as? NSTextView)
-        XCTAssertTrue(panel.firstResponder === editor)
+        let addField = try XCTUnwrap(firstDescendant(of: FocusableTextField.self, in: hostingView))
+        XCTAssertTrue(panel.makeFirstResponder(addField))
+        let addEditor = try XCTUnwrap(addField.currentEditor() as? NSTextView)
+        XCTAssertTrue(panel.firstResponder === addEditor)
         let event = try XCTUnwrap(
             NSEvent.keyEvent(
                 with: .keyDown,
@@ -797,10 +1183,17 @@ final class TaskComposerFocusTests: XCTestCase {
             )
         )
 
-        editor.keyDown(with: event)
+        addEditor.keyDown(with: event)
+
+        let editingField = try waitForDescendant(
+            of: FocusableTextField.self,
+            in: hostingView,
+            matching: { $0.stringValue == "Second task" }
+        )
+        let editor = try XCTUnwrap(editingField.currentEditor() as? NSTextView)
 
         XCTAssertEqual(store.draft, "Second task")
-        XCTAssertEqual(field.stringValue, "Second task")
+        XCTAssertEqual(editingField.stringValue, "Second task")
         XCTAssertEqual(
             editor.selectedRange(),
             NSRange(location: "Second task".utf16.count, length: 0)
@@ -816,9 +1209,14 @@ final class TaskComposerFocusTests: XCTestCase {
         XCTAssertEqual(store.items, [firstTask])
         XCTAssertEqual(store.editingTaskID, firstTask.id)
         XCTAssertEqual(store.draft, "First task")
-        XCTAssertEqual(field.stringValue, "First task")
+        let recalledField = try waitForDescendant(
+            of: FocusableTextField.self,
+            in: hostingView,
+            matching: { $0.stringValue == "First task" }
+        )
+        XCTAssertEqual(recalledField.stringValue, "First task")
         XCTAssertEqual(
-            editor.selectedRange(),
+            try XCTUnwrap(recalledField.currentEditor() as? NSTextView).selectedRange(),
             NSRange(location: "First task".utf16.count, length: 0)
         )
     }
@@ -930,6 +1328,45 @@ final class TaskComposerFocusTests: XCTestCase {
         return nil
     }
 
+    private func waitForDescendant<View: NSView>(
+        of type: View.Type,
+        in root: NSView,
+        matching predicate: @escaping (View) -> Bool
+    ) throws -> View {
+        let predicateExpectation = expectation(description: "Matching descendant mounts")
+        var match: View?
+
+        let deadline = Date().addingTimeInterval(1)
+        func poll() {
+            match = firstDescendant(of: type, in: root, matching: predicate)
+            if match != nil || Date() >= deadline {
+                predicateExpectation.fulfill()
+            } else {
+                DispatchQueue.main.async(execute: poll)
+            }
+        }
+        poll()
+        wait(for: [predicateExpectation], timeout: 1)
+
+        return try XCTUnwrap(match)
+    }
+
+    private func firstDescendant<View: NSView>(
+        of type: View.Type,
+        in root: NSView,
+        matching predicate: (View) -> Bool
+    ) -> View? {
+        if let match = root as? View, predicate(match) {
+            return match
+        }
+        for subview in root.subviews {
+            if let match = firstDescendant(of: type, in: subview, matching: predicate) {
+                return match
+            }
+        }
+        return nil
+    }
+
     private func keyEvent(
         _ characters: String,
         keyCode: UInt16,
@@ -972,5 +1409,18 @@ final class DotsMenuTests: XCTestCase {
             XCTAssertEqual(item.action, shortcut.action)
             XCTAssertNil(item.target)
         }
+    }
+
+    func testMainMenuDeclaresDotMaterialChoices() throws {
+        let mainMenu = DotsMenu.mainMenu(material: .regular)
+        let appMenu = try XCTUnwrap(mainMenu.item(withTitle: "Dots")?.submenu)
+        let materialMenu = try XCTUnwrap(appMenu.item(withTitle: "Dot Material")?.submenu)
+
+        XCTAssertEqual(
+            materialMenu.items.map(\.title),
+            DotMaterialStyle.allCases.map(\.title)
+        )
+        XCTAssertEqual(materialMenu.item(withTitle: "Regular")?.state, .on)
+        XCTAssertEqual(materialMenu.item(withTitle: "Liquid")?.state, .off)
     }
 }
