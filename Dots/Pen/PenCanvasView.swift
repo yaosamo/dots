@@ -4,7 +4,8 @@ import Combine
 /// Handles mouse and keys for one screen. Ink is rendered by SwiftUI (InkView) in a click-through
 /// subview, with the brush palette on the left and, while the whiteboard is up, its toolbar on top.
 /// Esc deselects or exits, ⌘Z undoes, C clears, Delete removes the selection (or clears), 1–5 pick
-/// a brush, W toggles the whiteboard, and on the whiteboard V P R O A L T E pick its tools.
+/// a brush, W toggles the whiteboard, and on the whiteboard V H P R O A L T E pick its tools.
+/// The board pans with a two-finger scroll, Space-drag or the hand tool.
 final class PenCanvasView: NSView, NSTextFieldDelegate {
     var onExit: (() -> Void)?
 
@@ -15,8 +16,21 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
     private var stateObserver: AnyCancellable?
     private var lastBoardColor: BoardColor
 
+    /// What the current mouse drag is doing, fixed at mouse-down so a tool change mid-drag can't
+    /// strand it.
+    private enum Gesture {
+        case stroke(onBoard: Bool)
+        /// The last pointer position, in screen points.
+        case pan(last: CGPoint)
+        case select, erase, shape
+    }
+
+    private var gesture: Gesture?
+    /// Space held: drags pan the board instead of drawing, as in Excalidraw and Figma.
+    private var isSpaceHeld = false
+
     /// Where the select tool's drag began, where the dragged item's anchor was then,
-    /// and whether it has moved anything yet.
+    /// and whether it has moved anything yet. World points.
     private var dragStart: CGPoint?
     private var anchorStart: CGPoint?
     private var hasMoved = false
@@ -60,10 +74,9 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
         paletteHost.frame = NSRect(x: 32, y: bounds.midY - palette.height / 2,
                                    width: palette.width, height: palette.height)
         // Along the whiteboard's top edge, inside it.
-        let board = BoardToolbar.size
-        let boardTop = bounds.height * (1 - Whiteboard.scale) / 2
-        boardHost.frame = NSRect(x: bounds.midX - board.width / 2, y: boardTop + 16,
-                                 width: board.width, height: board.height)
+        let toolbar = BoardToolbar.size
+        boardHost.frame = NSRect(x: bounds.midX - toolbar.width / 2, y: boardRect.minY + 16,
+                                 width: toolbar.width, height: toolbar.height)
     }
 
     private func stateDidChange() {
@@ -112,17 +125,34 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
             NSCursor.arrow.set()
         } else if textField.map({ $0.frame.contains(mouse ?? .zero) }) == true {
             NSCursor.iBeam.set()
+        } else if case .pan = gesture {
+            NSCursor.closedHand.set()
+        } else if isSpaceHeld, let mouse, isOnBoard(mouse) {
+            NSCursor.openHand.set()
         } else {
             PenCursor.cursor(for: brushes).set()
         }
     }
 
-    // MARK: Mouse
+    // MARK: Coordinates
+
+    private var boardRect: CGRect { Whiteboard.rect(in: bounds.size) }
+
+    private func isOnBoard(_ point: CGPoint) -> Bool {
+        brushes.showsWhiteboard && boardRect.contains(point)
+    }
+
+    /// Screen point → board (world) point, through the pan.
+    private func world(_ point: CGPoint) -> CGPoint {
+        point.offset(by: ink.boardOffset)
+    }
 
     /// Grid snapping, unless ⌘ is held.
     private func snapped(_ point: CGPoint, _ event: NSEvent) -> CGPoint {
         event.modifierFlags.contains(.command) ? point : BoardGrid.snap(point)
     }
+
+    // MARK: Mouse
 
     override func mouseDown(with event: NSEvent) {
         window?.makeKey()
@@ -132,34 +162,63 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
             return
         }
         window?.makeFirstResponder(self)
-        let point = point(for: event)
-        switch brushes.boardTool {
-        case nil:
-            ink.begin(at: point, brush: brushes.brush, color: brushes.brush.inkColor)
+        let screen = point(for: event)
+        let point = world(screen)
+        gesture = nil
+
+        if isOnBoard(screen), isSpaceHeld || brushes.boardTool == .hand {
+            gesture = .pan(last: screen)
+            NSCursor.closedHand.set()
+            return
+        }
+        guard let tool = brushes.boardTool else {
+            // Brushes draw on the board when started on it; spotlights always light the screen.
+            let onBoard = !brushes.brush.isSpotlight && isOnBoard(screen)
+            ink.begin(at: onBoard ? point : screen, brush: brushes.brush, color: brushes.brush.inkColor, onBoard: onBoard)
+            gesture = .stroke(onBoard: onBoard)
+            return
+        }
+        // Whiteboard tools only work on the board.
+        guard isOnBoard(screen) else { return }
+        switch tool {
+        case .hand:
+            break // handled above
         case .marker:
-            ink.begin(at: point, brush: .ink, color: brushes.boardColor.color)
+            ink.begin(at: point, brush: .ink, color: brushes.boardColor.color, onBoard: true)
+            gesture = .stroke(onBoard: true)
         case .select:
             ink.selectedID = ink.item(at: point)
             dragStart = point
             anchorStart = ink.selectedID.flatMap(ink.anchor(of:))
             hasMoved = false
+            gesture = .select
         case .eraser:
             ink.beginErasing()
             ink.erase(at: point)
+            gesture = .erase
         case .text:
             beginText(at: snapped(point, event))
         case .rectangle, .ellipse, .arrow, .line:
-            if let kind = brushes.boardTool?.shapeKind {
+            if let kind = tool.shapeKind {
                 ink.beginShape(kind, at: snapped(point, event), color: brushes.boardColor)
+                gesture = .shape
             }
         }
     }
 
     override func mouseDragged(with event: NSEvent) {
-        let point = point(for: event)
-        switch brushes.boardTool {
-        case nil, .marker:
-            ink.extend(to: point)
+        let screen = point(for: event)
+        let point = world(screen)
+        switch gesture {
+        case nil:
+            return
+        case .pan(let last):
+            // Content follows the pointer, so the offset moves the other way.
+            ink.pan(by: CGSize(width: last.x - screen.x, height: last.y - screen.y))
+            gesture = .pan(last: screen)
+            return
+        case .stroke(let onBoard):
+            ink.extend(to: onBoard ? point : screen)
         case .select:
             guard let selected = ink.selectedID, let dragStart, let anchorStart,
                   let anchor = ink.anchor(of: selected) else { return }
@@ -172,11 +231,9 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
                 hasMoved = true
             }
             ink.move(selected, by: CGSize(width: target.x - anchor.x, height: target.y - anchor.y))
-        case .eraser:
+        case .erase:
             ink.erase(at: point)
-        case .text:
-            break
-        case .rectangle, .ellipse, .arrow, .line:
+        case .shape:
             // Shift's 15° lines win over the grid; squares and circles stay on it.
             let isAngled = ink.shapes.last.map { $0.kind == .line || $0.kind == .arrow } ?? false
             if event.modifierFlags.contains(.shift) {
@@ -189,15 +246,26 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
     }
 
     override func mouseUp(with event: NSEvent) {
-        switch brushes.boardTool {
-        case nil, .marker: ink.end()
+        switch gesture {
+        case nil, .pan: break
+        case .stroke: ink.end()
         case .select:
             dragStart = nil
             anchorStart = nil
-        case .eraser: ink.endErasing()
-        case .text: break
-        case .rectangle, .ellipse, .arrow, .line: ink.endShape()
+        case .erase: ink.endErasing()
+        case .shape: ink.endShape()
         }
+        gesture = nil
+        updateCursor()
+    }
+
+    /// Two-finger scroll (or the mouse wheel) over the board pans it.
+    override func scrollWheel(with event: NSEvent) {
+        guard isOnBoard(point(for: event)) else { return super.scrollWheel(with: event) }
+        commitText()
+        // A wheel reports lines, a trackpad points.
+        let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 10
+        ink.pan(by: CGSize(width: -event.scrollingDeltaX * scale, height: -event.scrollingDeltaY * scale))
     }
 
     /// Shift: squares and circles, and lines snapped to 15° steps.
@@ -220,8 +288,10 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
 
     // MARK: Text
 
+    /// `point` is in world points; the field sits over where the text will appear on screen.
     private func beginText(at point: CGPoint) {
         let lineHeight = BoardText.lineHeight
+        let screen = CGPoint(x: point.x - ink.boardOffset.width, y: point.y - ink.boardOffset.height)
         let field = NSTextField(string: "")
         field.isBordered = false
         field.drawsBackground = false
@@ -230,7 +300,7 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
         field.textColor = brushes.boardColor.nsColor
         field.delegate = self
         // Centered on the click, like Excalidraw.
-        field.frame = NSRect(x: point.x, y: point.y - lineHeight / 2, width: 600, height: lineHeight + 4)
+        field.frame = NSRect(x: screen.x, y: screen.y - lineHeight / 2, width: 600, height: lineHeight + 4)
         addSubview(field, positioned: .below, relativeTo: paletteHost)
         window?.makeFirstResponder(field)
         textField = field
@@ -258,7 +328,13 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
 
     override func keyDown(with event: NSEvent) {
         let characters = event.charactersIgnoringModifiers?.lowercased()
-        if event.keyCode == 53 { // Esc
+        if event.keyCode == 49 { // Space
+            guard brushes.showsWhiteboard else { return super.keyDown(with: event) }
+            if !isSpaceHeld {
+                isSpaceHeld = true
+                updateCursor()
+            }
+        } else if event.keyCode == 53 { // Esc
             if ink.selectedID != nil {
                 ink.selectedID = nil
             } else {
@@ -279,6 +355,12 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
         } else {
             super.keyDown(with: event)
         }
+    }
+
+    override func keyUp(with event: NSEvent) {
+        guard event.keyCode == 49 else { return super.keyUp(with: event) }
+        isSpaceHeld = false
+        updateCursor()
     }
 
     private func point(for event: NSEvent) -> CGPoint {

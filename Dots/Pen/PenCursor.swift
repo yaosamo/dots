@@ -15,6 +15,7 @@ enum PenCursor {
         case nil: cursor(for: state.brush)
         case .marker: cursor(key: "board.\(state.boardColor.rawValue)", color: state.boardColor.nsColor)
         case .select: .arrow
+        case .hand: .openHand
         case .text: .iBeam
         case .rectangle, .ellipse, .arrow, .line, .eraser: .crosshair
         }

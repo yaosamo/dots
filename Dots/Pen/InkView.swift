@@ -1,12 +1,16 @@
 import SwiftUI
 
-/// What's drawn on one screen, in top-left-origin points: brush strokes plus whiteboard shapes.
+/// What's drawn on one screen: notes on the screen, and the whiteboard's contents.
+/// Screen strokes are in top-left-origin screen points. Board strokes and shapes are in board
+/// ("world") points, which match screen points until the board is panned by `boardOffset`.
 /// Every change takes a snapshot first, so ⌘Z undoes drawing, moving, erasing and clearing alike.
 @MainActor
 final class InkModel: ObservableObject {
     struct Stroke: Identifiable {
         let id = UUID()
         let brush: Brush
+        /// Drawn on the whiteboard: in world points, panned and clipped with it.
+        let onBoard: Bool
         /// What the stroke Canvas paints: the brush's ink, or the board color for the marker.
         /// Shader brushes only read its alpha.
         let color: Color
@@ -48,6 +52,8 @@ final class InkModel: ObservableObject {
     @Published private(set) var strokes: [Stroke] = []
     @Published private(set) var shapes: [Shape] = []
     @Published var selectedID: UUID?
+    /// How far the whiteboard is panned: world point = screen point + offset. Not part of undo.
+    @Published private(set) var boardOffset = CGSize.zero
     /// Shader brushes animate against this.
     let startDate = Date()
     private var isDrawing = false
@@ -55,10 +61,8 @@ final class InkModel: ObservableObject {
     private var history: [Snapshot] = []
     private var didErase = false
 
-    /// One layer per brush, so each shader runs once over all of its strokes.
-    var brushesInUse: [Brush] {
-        Brush.allCases.filter { brush in !brush.isSpotlight && strokes.contains { $0.brush == brush } }
-    }
+    var boardStrokes: [Stroke] { strokes.filter(\.onBoard) }
+    var screenStrokes: [Stroke] { strokes.filter { !$0.onBoard } }
 
     var finishedSpotlights: [Stroke] {
         strokes.filter { $0.brush.isSpotlight && $0.isFinished }
@@ -77,9 +81,10 @@ final class InkModel: ObservableObject {
 
     // MARK: Strokes
 
-    func begin(at point: CGPoint, brush: Brush, color: Color) {
+    func begin(at point: CGPoint, brush: Brush, color: Color, onBoard: Bool) {
         checkpoint()
-        strokes.append(Stroke(brush: brush, color: color, points: [point], bounds: CGRect(origin: point, size: .zero)))
+        strokes.append(Stroke(brush: brush, onBoard: onBoard, color: color, points: [point],
+                              bounds: CGRect(origin: point, size: .zero)))
         isDrawing = true
     }
 
@@ -131,11 +136,18 @@ final class InkModel: ObservableObject {
         shapes.append(Shape(kind: .text, start: origin, end: origin, color: color, text: text))
     }
 
-    // MARK: Selecting, moving, erasing
+    // MARK: Panning
 
-    /// The topmost stroke or shape under `point`. Strokes draw above shapes, so they're checked first.
+    func pan(by delta: CGSize) {
+        boardOffset.width += delta.width
+        boardOffset.height += delta.height
+    }
+
+    // MARK: Selecting, moving, erasing (board items, world points)
+
+    /// The topmost board stroke or shape under `point`. Strokes draw above shapes, so they're checked first.
     func item(at point: CGPoint) -> UUID? {
-        if let stroke = strokes.last(where: { !$0.brush.isSpotlight && hits($0, point) }) { return stroke.id }
+        if let stroke = strokes.last(where: { $0.onBoard && hits($0, point) }) { return stroke.id }
         return shapes.last { hits($0, point, outlineOnly: false) }?.id
     }
 
@@ -172,7 +184,7 @@ final class InkModel: ObservableObject {
     /// Removes whatever the eraser touches. Shapes only erase from their outline, as in Excalidraw.
     func erase(at point: CGPoint) {
         let strokeCount = strokes.count, shapeCount = shapes.count
-        strokes.removeAll { hits($0, point) }
+        strokes.removeAll { $0.onBoard && hits($0, point) }
         shapes.removeAll { hits($0, point, outlineOnly: true) }
         if strokes.count != strokeCount || shapes.count != shapeCount {
             didErase = true
@@ -275,47 +287,52 @@ struct InkView: View {
     @ObservedObject private var tuning = ShaderTuning.shared
 
     var body: some View {
-        ZStack {
-            Whiteboard(isShown: brushes.showsWhiteboard)
-            // Outside the timeline: the dim only changes when a spotlight is added or removed.
-            SpotlightLayer(spotlights: ink.finishedSpotlights)
-                .equatable()
-            ShapeLayer(shapes: ink.shapes)
-            strokes
-            selection
+        GeometryReader { geometry in
+            ZStack {
+                Whiteboard(isShown: brushes.showsWhiteboard, offset: ink.boardOffset)
+                board(in: geometry.size)
+                // Outside the timeline: the dim only changes when a spotlight is added or removed.
+                SpotlightLayer(spotlights: ink.finishedSpotlights)
+                    .equatable()
+                StrokeStack(strokes: ink.screenStrokes, startDate: ink.startDate, tuning: tuning.values)
+                // Thin frame so it's obvious the screen is in drawing mode.
+                Rectangle()
+                    .strokeBorder(Color(nsColor: brushes.brush.accent).opacity(0.45), lineWidth: 3)
+                drawingSpotlight
+            }
         }
         .ignoresSafeArea()
     }
 
-    private var strokes: some View {
-        // Shader brushes move, so tick every frame while one is on screen. Plain ink holds still.
-        TimelineView(.animation(paused: ink.brushesInUse.allSatisfy { $0 == .ink })) { timeline in
-            let time = timeline.date.timeIntervalSince(ink.startDate)
-            ZStack {
-                ForEach(ink.brushesInUse) { brush in
-                    let strokes = ink.strokes.filter { $0.brush == brush }
-                    // Each layer covers only its strokes plus room for the glow, not the whole
-                    // (5K) screen: full-screen offscreen layers per brush cost hundreds of MB.
-                    let area = strokes.map(\.bounds).reduce(CGRect.null) { $0.union($1) }
-                        .insetBy(dx: -brush.layerMargin(tuning.values).width, dy: -brush.layerMargin(tuning.values).height)
-                    StrokeLayer(strokes: strokes, brush: brush, origin: area.origin)
-                        .frame(width: area.width, height: area.height)
-                        .brushEffect(brush, time: Float(time), origin: area.origin, tuning: tuning.values)
-                        .position(x: area.midX, y: area.midY)
-                }
-                // Thin frame so it's obvious the screen is in drawing mode.
-                Rectangle()
-                    .strokeBorder(Color(nsColor: brushes.brush.accent).opacity(0.45), lineWidth: 3)
-            }
+    /// The board's contents, drawn in world points, shifted by the pan and clipped to the board.
+    private func board(in size: CGSize) -> some View {
+        let rect = Whiteboard.rect(in: size)
+        let isShown = brushes.showsWhiteboard
+        return ZStack {
+            ShapeLayer(shapes: ink.shapes)
+            StrokeStack(strokes: ink.boardStrokes, startDate: ink.startDate, tuning: tuning.values)
+            selection
         }
-        .overlay {
-            // Marching-ants outline while a spotlight is being drawn.
-            if let stroke = ink.drawingSpotlight {
-                StrokeLayer.path(for: stroke.points)
-                    .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: Brush.spotlight.lineWidth,
-                                                                   lineCap: .round, dash: [6, 5]))
-                    .shadow(color: .black.opacity(0.5), radius: 1)
-            }
+        .frame(width: size.width, height: size.height)
+        .offset(x: -rect.minX - ink.boardOffset.width, y: -rect.minY - ink.boardOffset.height)
+        .frame(width: rect.width, height: rect.height, alignment: .topLeading)
+        .clipShape(RoundedRectangle(cornerRadius: Whiteboard.cornerRadius, style: .continuous))
+        .position(x: rect.midX, y: rect.midY)
+        // Comes and goes with the board.
+        .opacity(isShown ? 1 : 0)
+        .scaleEffect(isShown ? 1 : 0.96)
+        .animation(Whiteboard.animation, value: isShown)
+        .allowsHitTesting(false)
+    }
+
+    /// Marching-ants outline while a spotlight is being drawn.
+    @ViewBuilder
+    private var drawingSpotlight: some View {
+        if let stroke = ink.drawingSpotlight {
+            StrokeLayer.path(for: stroke.points)
+                .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: Brush.spotlight.lineWidth,
+                                                               lineCap: .round, dash: [6, 5]))
+                .shadow(color: .black.opacity(0.5), radius: 1)
         }
     }
 
@@ -331,35 +348,90 @@ struct InkView: View {
     }
 }
 
-/// Optional white drawing surface centred on the screen, 80% of its size, with a dot grid.
-/// Ink draws on top.
+/// Every stroke in `strokes`, one layer per brush so each shader runs once over all of its strokes.
+private struct StrokeStack: View {
+    let strokes: [InkModel.Stroke]
+    let startDate: Date
+    let tuning: ShaderTuning.Values
+
+    var body: some View {
+        let brushes = Brush.allCases.filter { brush in !brush.isSpotlight && strokes.contains { $0.brush == brush } }
+        // Shader brushes move, so tick every frame while one is on screen. Plain ink holds still.
+        TimelineView(.animation(paused: brushes.allSatisfy { $0 == .ink })) { timeline in
+            let time = timeline.date.timeIntervalSince(startDate)
+            ZStack {
+                ForEach(brushes) { brush in
+                    let strokes = strokes.filter { $0.brush == brush }
+                    // Each layer covers only its strokes plus room for the glow, not the whole
+                    // (5K) screen: full-screen offscreen layers per brush cost hundreds of MB.
+                    let area = strokes.map(\.bounds).reduce(CGRect.null) { $0.union($1) }
+                        .insetBy(dx: -brush.layerMargin(tuning).width, dy: -brush.layerMargin(tuning).height)
+                    StrokeLayer(strokes: strokes, brush: brush, origin: area.origin)
+                        .frame(width: area.width, height: area.height)
+                        .brushEffect(brush, time: Float(time), origin: area.origin, tuning: tuning)
+                        .position(x: area.midX, y: area.midY)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+/// Optional white drawing surface centred on the screen, 80% of its size, with a dot grid that
+/// pans with the board's contents. Ink draws on top.
 struct Whiteboard: View {
     static let scale: CGFloat = 0.8
+    static let cornerRadius: CGFloat = 28
+    static let animation = Animation.spring(response: 0.35, dampingFraction: 0.9)
+
+    /// The board's frame in a view (or screen) of `size`, top-left origin.
+    static func rect(in size: CGSize) -> CGRect {
+        let board = CGSize(width: size.width * scale, height: size.height * scale)
+        return CGRect(x: (size.width - board.width) / 2, y: (size.height - board.height) / 2,
+                      width: board.width, height: board.height)
+    }
 
     let isShown: Bool
+    /// The board's pan, so the dots move with its contents.
+    let offset: CGSize
 
     var body: some View {
         GeometryReader { geometry in
-            let size = CGSize(width: geometry.size.width * Self.scale, height: geometry.size.height * Self.scale)
-            let board = CGRect(x: (geometry.size.width - size.width) / 2, y: (geometry.size.height - size.height) / 2,
-                               width: size.width, height: size.height)
-            let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
+            let board = Self.rect(in: geometry.size)
+            let shape = RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
             shape
                 .fill(.white)
                 .shadow(color: .black.opacity(0.3), radius: 40, y: 12)
-                .overlay {
-                    BoardGrid.dots(in: board.insetBy(dx: 12, dy: 12))
-                        .offset(x: 12, y: 12)
-                        .fill(Color.black.opacity(0.16))
-                }
+                .overlay(alignment: .topLeading) { grid(for: board) }
                 .clipShape(shape)
-                .frame(width: size.width, height: size.height)
+                .frame(width: board.width, height: board.height)
                 .position(x: board.midX, y: board.midY)
         }
         .opacity(isShown ? 1 : 0)
         .scaleEffect(isShown ? 1 : 0.96)
-        .animation(.spring(response: 0.35, dampingFraction: 0.9), value: isShown)
+        .animation(Self.animation, value: isShown)
         .allowsHitTesting(false)
+    }
+
+    /// Dots sit on world multiples of the spacing. The dot pattern is built once per board size
+    /// and only shifted while panning, by how far the board's corner is past the last dot.
+    private func grid(for board: CGRect) -> some View {
+        let spacing = BoardGrid.spacing
+        func phase(_ value: CGFloat) -> CGFloat {
+            let remainder = value.truncatingRemainder(dividingBy: spacing)
+            return remainder < 0 ? remainder + spacing : remainder
+        }
+        return GridDots(size: board.size)
+            .equatable()
+            .offset(x: -phase(board.minX + offset.width), y: -phase(board.minY + offset.height))
+    }
+}
+
+private struct GridDots: View, Equatable {
+    let size: CGSize
+
+    var body: some View {
+        BoardGrid.dots(covering: size).fill(Color.black.opacity(0.16))
     }
 }
 

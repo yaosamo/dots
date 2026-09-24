@@ -4,13 +4,14 @@ import SwiftUI
 /// Whiteboard tools, a tiny Excalidraw. Only offered while the whiteboard is up; otherwise the
 /// selected brush draws. Letter keys pick them, as in Excalidraw.
 enum BoardTool: String, CaseIterable, Identifiable {
-    case select, marker, rectangle, ellipse, arrow, line, text, eraser
+    case select, hand, marker, rectangle, ellipse, arrow, line, text, eraser
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .select: "Select"
+        case .hand: "Hand (pan)"
         case .marker: "Marker"
         case .rectangle: "Rectangle"
         case .ellipse: "Ellipse"
@@ -24,6 +25,7 @@ enum BoardTool: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .select: "cursorarrow"
+        case .hand: "hand.raised"
         case .marker: "pencil.tip"
         case .rectangle: "rectangle"
         case .ellipse: "circle"
@@ -37,6 +39,7 @@ enum BoardTool: String, CaseIterable, Identifiable {
     var key: String {
         switch self {
         case .select: "v"
+        case .hand: "h"
         case .marker: "p"
         case .rectangle: "r"
         case .ellipse: "o"
@@ -54,7 +57,7 @@ enum BoardTool: String, CaseIterable, Identifiable {
         case .ellipse: .ellipse
         case .arrow: .arrow
         case .line: .line
-        case .select, .marker, .text, .eraser: nil
+        case .select, .hand, .marker, .text, .eraser: nil
         }
     }
 
@@ -84,7 +87,7 @@ enum BoardColor: String, CaseIterable, Identifiable {
 }
 
 /// The whiteboard's dot grid. Shapes, text and moved objects snap to it; hold ⌘ to place freely.
-/// Dots sit on multiples of `spacing` in screen coordinates, so snapping and drawing agree.
+/// Dots sit on multiples of `spacing` in world (board) coordinates, so snapping and drawing agree.
 enum BoardGrid {
     static let spacing: CGFloat = 20
     static let dotRadius: CGFloat = 1.2
@@ -93,14 +96,13 @@ enum BoardGrid {
         CGPoint(x: (point.x / spacing).rounded() * spacing, y: (point.y / spacing).rounded() * spacing)
     }
 
-    /// The dots inside `rect` (screen coordinates), as one path in the rect's local coordinates.
-    static func dots(in rect: CGRect) -> Path {
+    /// Dots from the origin across `size` plus one spacing, so the pattern still covers `size`
+    /// when shifted back by up to one spacing.
+    static func dots(covering size: CGSize) -> Path {
         var path = Path()
-        let firstX = (rect.minX / spacing).rounded(.up) * spacing
-        let firstY = (rect.minY / spacing).rounded(.up) * spacing
-        for x in stride(from: firstX, through: rect.maxX, by: spacing) {
-            for y in stride(from: firstY, through: rect.maxY, by: spacing) {
-                path.addEllipse(in: CGRect(x: x - rect.minX - dotRadius, y: y - rect.minY - dotRadius,
+        for x in stride(from: 0, through: size.width + spacing, by: spacing) {
+            for y in stride(from: 0, through: size.height + spacing, by: spacing) {
+                path.addEllipse(in: CGRect(x: x - dotRadius, y: y - dotRadius,
                                            width: dotRadius * 2, height: dotRadius * 2))
             }
         }
