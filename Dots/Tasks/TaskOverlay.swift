@@ -491,7 +491,7 @@ private struct TaskPalette {
 /// Frost reveal mask, drawn by the `frostMask` shader (Shaders/FrostShader.metal): the screen frosts
 /// unevenly, patch by patch, following fractal noise, with the edges leading slightly.
 /// `progress` is how much frost is showing; closing plays it back with the edges clearing first.
-private struct FrostSweep: View, Animatable {
+struct FrostSweep: View, Animatable {
     var progress: CGFloat
     var recedesToCenter = false
 

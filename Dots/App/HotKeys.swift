@@ -32,6 +32,12 @@ final class HotKeyCenter {
         Log.hotKeys.debug("Registered \(label, privacy: .public)")
     }
 
+    func unregisterAll() {
+        refs.forEach { UnregisterEventHotKey($0) }
+        refs = []
+        actions = [:]
+    }
+
     private func fire(_ id: UInt32) {
         actions[id]?()
     }

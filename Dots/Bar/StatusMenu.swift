@@ -28,7 +28,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.addItem(about)
         menu.addItem(.separator())
 
-        for dot in Dot.allCases where dot.isAvailable {
+        for dot in coordinator.settings.enabled {
             let toolItem = NSMenuItem(title: dot.title, action: #selector(toggleDot(_:)), keyEquivalent: dot.keyEquivalent)
             // Shown for reference; the global hot key does the work even when the menu is closed.
             toolItem.keyEquivalentModifierMask = HotKeyCenter.modifierFlags
@@ -38,11 +38,18 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
             toolItem.image = NSImage(systemSymbolName: dot.symbol, accessibilityDescription: nil)
             menu.addItem(toolItem)
         }
+        let choose = NSMenuItem(title: "Choose Dots…", action: #selector(showSetup), keyEquivalent: "")
+        choose.target = self
+        menu.addItem(choose)
         menu.addItem(.separator())
 
         let shaderLab = NSMenuItem(title: "Shader Lab…", action: #selector(showShaderLab), keyEquivalent: "")
         shaderLab.target = self
         menu.addItem(shaderLab)
+
+        let welcome = NSMenuItem(title: "Show Welcome", action: #selector(showWelcome), keyEquivalent: "")
+        welcome.target = self
+        menu.addItem(welcome)
 
         let alwaysDark = NSMenuItem(title: "Always Dark Tasks", action: #selector(toggleAlwaysDarkTasks), keyEquivalent: "")
         alwaysDark.target = self
@@ -60,6 +67,14 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         coordinator.toggle(dot)
     }
 
+    @objc private func showSetup() {
+        coordinator.showSetup()
+    }
+
+    @objc private func showWelcome() {
+        coordinator.showWelcome()
+    }
+
     @objc private func showShaderLab() {
         coordinator.showShaderLab()
     }
@@ -71,11 +86,11 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     @objc private func showAbout() {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
-        let shortcuts = Dot.allCases.filter(\.isAvailable)
+        let shortcuts = coordinator.settings.enabled
             .map { "\($0.title)  \($0.shortcutLabel)" }
             .joined(separator: "\n")
         let credits = NSAttributedString(
-            string: "Five dots at the top of your screen, each one a tool.\n\n\(shortcuts)",
+            string: "Small tools at the top of your screen, one dot each.\n\n\(shortcuts)",
             attributes: [
                 .font: NSFont.systemFont(ofSize: 11),
                 .foregroundColor: NSColor.secondaryLabelColor,
