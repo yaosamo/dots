@@ -17,4 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         coordinator.start()
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        coordinator.prepareForQuit()
+    }
 }

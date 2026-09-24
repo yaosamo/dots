@@ -1,37 +1,63 @@
 import SwiftUI
 
-/// What's drawn on one screen: notes on the screen, and the whiteboard's contents.
+/// What's drawn on one screen: notes on the screen, and (on the board's screen) the whiteboard's
+/// contents, which are loaded from and saved to `BoardStore`.
 /// Screen strokes are in top-left-origin screen points. Board strokes and shapes are in board
 /// ("world") points, which match screen points until the board is panned by `boardOffset`.
 /// Every change takes a snapshot first, so ⌘Z undoes drawing, moving, erasing and clearing alike.
 @MainActor
 final class InkModel: ObservableObject {
-    struct Stroke: Identifiable {
-        let id = UUID()
+    /// A stroke's color: its brush's own ink, or a board color (the marker). Stored by name so
+    /// strokes can be saved; shader brushes only read the alpha.
+    enum Ink: Codable, Equatable {
+        case brush
+        case board(BoardColor)
+    }
+
+    struct Stroke: Identifiable, Equatable, Codable {
+        var id = UUID()
         let brush: Brush
         /// Drawn on the whiteboard: in world points, panned and clipped with it.
         let onBoard: Bool
-        /// What the stroke Canvas paints: the brush's ink, or the board color for the marker.
-        /// Shader brushes only read its alpha.
-        let color: Color
+        let ink: Ink
         var points: [CGPoint]
         /// Kept up to date as points arrive, so layers can be sized without rescanning points.
         var bounds: CGRect
         var isFinished = false
+
+        var color: Color {
+            switch ink {
+            case .brush: brush.inkColor
+            case .board(let color): color.color
+            }
+        }
+
+        func offset(by delta: CGSize) -> Stroke {
+            var moved = self
+            moved.points = points.map { $0.offset(by: delta) }
+            moved.bounds = bounds.offsetBy(dx: delta.width, dy: delta.height)
+            return moved
+        }
     }
 
-    struct Shape: Identifiable {
-        enum Kind { case rectangle, ellipse, arrow, line, text }
+    /// Text spans `start` (top-left) to `end` (bottom-right), measured once when it's placed.
+    struct Shape: Identifiable, Equatable, Codable {
+        enum Kind: String, Codable { case rectangle, ellipse, arrow, line, text }
 
-        let id = UUID()
+        var id = UUID()
         let kind: Kind
         var start: CGPoint
         var end: CGPoint
         var color: BoardColor
         var text = ""
 
-        var bounds: CGRect {
-            kind == .text ? CGRect(origin: start, size: BoardText.size(of: text)) : CGRect(start: start, end: end)
+        var bounds: CGRect { CGRect(start: start, end: end) }
+
+        func offset(by delta: CGSize) -> Shape {
+            var moved = self
+            moved.start = start.offset(by: delta)
+            moved.end = end.offset(by: delta)
+            return moved
         }
     }
 
@@ -48,6 +74,8 @@ final class InkModel: ObservableObject {
     private static let minShapeSize: CGFloat = 4
     /// How close a click or the eraser has to come to count as touching something.
     private static let hitTolerance: CGFloat = 8
+    /// Undo steps kept; older ones are dropped so a long session doesn't pile up snapshots.
+    private static let historyLimit = 200
 
     @Published private(set) var strokes: [Stroke] = []
     @Published private(set) var shapes: [Shape] = []
@@ -61,7 +89,26 @@ final class InkModel: ObservableObject {
     private var history: [Snapshot] = []
     private var didErase = false
 
+    init() {}
+
+    /// Starts with a saved board. Undo history starts fresh.
+    init(board: BoardDocument) {
+        strokes = board.strokes.map { stroke in
+            var stroke = stroke
+            stroke.isFinished = true
+            return stroke
+        }
+        shapes = board.shapes
+        boardOffset = board.offset
+    }
+
+    /// The board part, for saving. `origin`: the board's top-left in world points at zero pan.
+    func boardDocument(origin: CGPoint) -> BoardDocument {
+        BoardDocument(origin: origin, offset: boardOffset, strokes: boardStrokes, shapes: shapes)
+    }
+
     var boardStrokes: [Stroke] { strokes.filter(\.onBoard) }
+    var hasBoardItems: Bool { !shapes.isEmpty || strokes.contains(where: \.onBoard) }
     var screenStrokes: [Stroke] { strokes.filter { !$0.onBoard } }
 
     var finishedSpotlights: [Stroke] {
@@ -81,9 +128,9 @@ final class InkModel: ObservableObject {
 
     // MARK: Strokes
 
-    func begin(at point: CGPoint, brush: Brush, color: Color, onBoard: Bool) {
+    func begin(at point: CGPoint, brush: Brush, ink: Ink = .brush, onBoard: Bool) {
         checkpoint()
-        strokes.append(Stroke(brush: brush, onBoard: onBoard, color: color, points: [point],
+        strokes.append(Stroke(brush: brush, onBoard: onBoard, ink: ink, points: [point],
                               bounds: CGRect(origin: point, size: .zero)))
         isDrawing = true
     }
@@ -133,7 +180,9 @@ final class InkModel: ObservableObject {
     func addText(_ text: String, at origin: CGPoint, color: BoardColor) {
         guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         checkpoint()
-        shapes.append(Shape(kind: .text, start: origin, end: origin, color: color, text: text))
+        let size = BoardText.size(of: text)
+        shapes.append(Shape(kind: .text, start: origin, end: CGPoint(x: origin.x + size.width, y: origin.y + size.height),
+                            color: color, text: text))
     }
 
     // MARK: Panning
@@ -162,11 +211,9 @@ final class InkModel: ObservableObject {
 
     func move(_ id: UUID, by delta: CGSize) {
         if let index = shapes.firstIndex(where: { $0.id == id }) {
-            shapes[index].start = shapes[index].start.offset(by: delta)
-            shapes[index].end = shapes[index].end.offset(by: delta)
+            shapes[index] = shapes[index].offset(by: delta)
         } else if let index = strokes.firstIndex(where: { $0.id == id }) {
-            strokes[index].points = strokes[index].points.map { $0.offset(by: delta) }
-            strokes[index].bounds = strokes[index].bounds.offsetBy(dx: delta.width, dy: delta.height)
+            strokes[index] = strokes[index].offset(by: delta)
         }
     }
 
@@ -225,8 +272,19 @@ final class InkModel: ObservableObject {
         selectedID = nil
     }
 
+    /// Empties the whiteboard, leaving screen notes. Undoable.
+    func clearBoard() {
+        guard hasBoardItems else { return }
+        checkpoint()
+        strokes.removeAll(where: \.onBoard)
+        shapes.removeAll()
+        isDrawingShape = false
+        selectedID = nil
+    }
+
     private func checkpoint() {
         history.append(Snapshot(strokes: strokes, shapes: shapes))
+        if history.count > Self.historyLimit { history.removeFirst() }
     }
 
     private func dropMissingSelection() {
@@ -284,17 +342,22 @@ struct InkView: View {
 
     @ObservedObject var ink: InkModel
     @ObservedObject var brushes: BrushState
+    /// Only one screen shows the whiteboard.
+    let hasBoard: Bool
     @ObservedObject private var tuning = ShaderTuning.shared
+
+    private var showsBoard: Bool { hasBoard && brushes.showsWhiteboard }
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Whiteboard(isShown: brushes.showsWhiteboard, offset: ink.boardOffset)
+                Whiteboard(isShown: showsBoard, offset: ink.boardOffset)
                 board(in: geometry.size)
                 // Outside the timeline: the dim only changes when a spotlight is added or removed.
                 SpotlightLayer(spotlights: ink.finishedSpotlights)
                     .equatable()
                 StrokeStack(strokes: ink.screenStrokes, startDate: ink.startDate, tuning: tuning.values)
+                    .equatable()
                 // Thin frame so it's obvious the screen is in drawing mode.
                 Rectangle()
                     .strokeBorder(Color(nsColor: brushes.brush.accent).opacity(0.45), lineWidth: 3)
@@ -307,10 +370,13 @@ struct InkView: View {
     /// The board's contents, drawn in world points, shifted by the pan and clipped to the board.
     private func board(in size: CGSize) -> some View {
         let rect = Whiteboard.rect(in: size)
-        let isShown = brushes.showsWhiteboard
+        let isShown = showsBoard
         return ZStack {
+            // Equatable, so panning (which re-renders this view) only moves them.
             ShapeLayer(shapes: ink.shapes)
+                .equatable()
             StrokeStack(strokes: ink.boardStrokes, startDate: ink.startDate, tuning: tuning.values)
+                .equatable()
             selection
         }
         .frame(width: size.width, height: size.height)
@@ -349,7 +415,7 @@ struct InkView: View {
 }
 
 /// Every stroke in `strokes`, one layer per brush so each shader runs once over all of its strokes.
-private struct StrokeStack: View {
+private struct StrokeStack: View, Equatable {
     let strokes: [InkModel.Stroke]
     let startDate: Date
     let tuning: ShaderTuning.Values
@@ -366,7 +432,10 @@ private struct StrokeStack: View {
                     // (5K) screen: full-screen offscreen layers per brush cost hundreds of MB.
                     let area = strokes.map(\.bounds).reduce(CGRect.null) { $0.union($1) }
                         .insetBy(dx: -brush.layerMargin(tuning).width, dy: -brush.layerMargin(tuning).height)
+                    // Equatable: each frame the shader re-runs with the new time, but the
+                    // strokes are only redrawn when they change.
                     StrokeLayer(strokes: strokes, brush: brush, origin: area.origin)
+                        .equatable()
                         .frame(width: area.width, height: area.height)
                         .brushEffect(brush, time: Float(time), origin: area.origin, tuning: tuning)
                         .position(x: area.midX, y: area.midY)
@@ -473,7 +542,7 @@ private struct SpotlightDim: Shape {
     }
 }
 
-struct StrokeLayer: View {
+struct StrokeLayer: View, Equatable {
     let strokes: [InkModel.Stroke]
     let brush: Brush
     /// Screen position of this layer's top-left corner.

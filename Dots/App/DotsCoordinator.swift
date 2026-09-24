@@ -138,14 +138,18 @@ final class DotsCoordinator: ObservableObject {
         settings.setEnabled(selection)
         settings.hasCompletedWelcome = true
         for dot in Dot.allCases where !selection.contains(dot) {
-            switch dot {
-            case .camera: camera?.hide()
-            case .tasks: tasks?.hide()
-            case .pen: pen?.hide()
-            }
+            feature(for: dot)?.hide()
         }
         registerHotKeys()
         bar?.show()
+    }
+
+    private func feature(for dot: Dot) -> DotFeature? {
+        switch dot {
+        case .camera: camera
+        case .tasks: tasks
+        case .pen: pen
+        }
     }
 
     private func registerHotKeys() {
@@ -155,6 +159,11 @@ final class DotsCoordinator: ObservableObject {
                 self?.toggle(dot)
             }
         }
+    }
+
+    /// Writes anything not yet saved, e.g. a whiteboard still open when the app quits.
+    func prepareForQuit() {
+        pen?.saveBoard()
     }
 
     func showShaderLab() {

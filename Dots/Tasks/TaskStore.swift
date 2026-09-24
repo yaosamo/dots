@@ -27,7 +27,6 @@ final class TaskStore: ObservableObject {
         }
     }
 
-    var openCount: Int { tasks.filter { !$0.isDone }.count }
     var hasCompleted: Bool { tasks.contains(where: \.isDone) }
 
     func add(_ title: String) {

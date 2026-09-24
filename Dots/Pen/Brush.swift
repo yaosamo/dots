@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-enum Brush: String, CaseIterable, Identifiable {
+enum Brush: String, CaseIterable, Identifiable, Codable {
     case ink, electric, fire, rainbow, spotlight
 
     var id: String { rawValue }
@@ -82,24 +82,21 @@ enum Brush: String, CaseIterable, Identifiable {
 }
 
 /// The selected brush, whiteboard tool and color, shared by every screen's canvas.
-/// The brush and whether the whiteboard is up are remembered between launches.
+/// Whether the whiteboard is up is remembered between launches; the tool isn't: the board opens
+/// with the marker and the screen with the electric brush (see `selectDefaultTool`).
 @MainActor
 final class BrushState: ObservableObject {
-    private static let defaultsKey = "pen.brush"
     private static let whiteboardKey = "pen.whiteboard"
 
     /// Picking a brush switches from any whiteboard tool back to drawing with it.
-    @Published var brush: Brush {
-        didSet {
-            UserDefaults.standard.set(brush.rawValue, forKey: Self.defaultsKey)
-            boardTool = nil
-        }
+    @Published var brush = Brush.electric {
+        didSet { boardTool = nil }
     }
 
     @Published var showsWhiteboard: Bool {
         didSet {
             UserDefaults.standard.set(showsWhiteboard, forKey: Self.whiteboardKey)
-            if !showsWhiteboard { boardTool = nil }
+            selectDefaultTool()
         }
     }
 
@@ -108,8 +105,17 @@ final class BrushState: ObservableObject {
     @Published var boardColor = BoardColor.black
 
     init() {
-        brush = UserDefaults.standard.string(forKey: Self.defaultsKey).flatMap(Brush.init(rawValue:)) ?? .ink
         showsWhiteboard = UserDefaults.standard.bool(forKey: Self.whiteboardKey)
+    }
+
+    /// The whiteboard's marker while the board is up, the electric brush otherwise.
+    /// Runs when the pen opens and whenever the board is shown or hidden.
+    func selectDefaultTool() {
+        if showsWhiteboard {
+            boardTool = .marker
+        } else {
+            brush = .electric
+        }
     }
 }
 
@@ -140,7 +146,7 @@ extension View {
     }
 }
 
-/// Vertical toolbar on the left edge: the brushes, then the whiteboard toggle.
+/// Vertical toolbar on the right edge: the brushes, then the whiteboard toggle.
 struct BrushPalette: View {
     private enum Metrics {
         static let cell: CGFloat = 48

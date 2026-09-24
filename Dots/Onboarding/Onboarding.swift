@@ -133,7 +133,7 @@ struct OnboardingView: View {
                     .mask(FrostSweep(progress: state.isFrosted ? 1 : 0, recedesToCenter: state.isDismissing))
 
                 intro(in: size)
-                choose(cards: cards)
+                choose(cards: cards, midX: size.width / 2)
                 plus
                 ForEach(Array(Dot.allCases.enumerated()), id: \.element) { index, dot in
                     dotView(dot, index: index, cards: cards, size: size)
@@ -171,11 +171,11 @@ struct OnboardingView: View {
 
     // MARK: Choose
 
-    private func choose(cards: [CGRect]) -> some View {
+    /// Cards are centered, so the heading and buttons share the screen's `midX`.
+    private func choose(cards: [CGRect], midX: CGFloat) -> some View {
         let isShown = state.phase == .choose
-        let top = cards.map(\.minY).min() ?? 0
-        let bottom = cards.map(\.maxY).max() ?? 0
-        let midX = cards.isEmpty ? 0 : (cards.map(\.minX).min()! + cards.map(\.maxX).max()!) / 2
+        let top = cards.first?.minY ?? 0
+        let bottom = cards.last?.maxY ?? 0
         return ZStack {
             VStack(spacing: 10) {
                 Text(state.mode == .welcome ? "Pick your dots" : "Choose your dots")

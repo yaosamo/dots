@@ -2,15 +2,18 @@ import AppKit
 import Combine
 
 /// Handles mouse and keys for one screen. Ink is rendered by SwiftUI (InkView) in a click-through
-/// subview, with the brush palette on the left and, while the whiteboard is up, its toolbar on top.
+/// subview, with the brush palette on the right and, while the whiteboard is up, its toolbar on top.
 /// Esc deselects or exits, ⌘Z undoes, C clears, Delete removes the selection (or clears), 1–5 pick
 /// a brush, W toggles the whiteboard, and on the whiteboard V H P R O A L T E pick its tools.
 /// The board pans with a two-finger scroll, Space-drag or the hand tool.
 final class PenCanvasView: NSView, NSTextFieldDelegate {
     var onExit: (() -> Void)?
 
-    private let ink = InkModel()
+    private let ink: InkModel
     private let brushes: BrushState
+    /// Set on the one screen that shows the whiteboard; its board is loaded from and saved here.
+    private let boardStore: BoardStore?
+    private var boardObserver: AnyCancellable?
     private let paletteHost: NSView
     private let boardHost: NSView
     private var stateObserver: AnyCancellable?
@@ -22,42 +25,61 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
         case stroke(onBoard: Bool)
         /// The last pointer position, in screen points.
         case pan(last: CGPoint)
-        case select, erase, shape
+        /// Moving the selection: where the drag and the item's anchor started (world points),
+        /// and whether anything has moved yet (the first move takes the undo snapshot).
+        case select(start: CGPoint, anchor: CGPoint?, hasMoved: Bool)
+        case erase, shape
     }
 
     private var gesture: Gesture?
     /// Space held: drags pan the board instead of drawing, as in Excalidraw and Figma.
     private var isSpaceHeld = false
 
-    /// Where the select tool's drag began, where the dragged item's anchor was then,
-    /// and whether it has moved anything yet. World points.
-    private var dragStart: CGPoint?
-    private var anchorStart: CGPoint?
-    private var hasMoved = false
-
     /// The text being typed with the text tool, and where it will land.
     private var textField: NSTextField?
     private var textOrigin = CGPoint.zero
 
-    init(frame: NSRect, brushes: BrushState) {
+    init(frame: NSRect, brushes: BrushState, boardStore: BoardStore?) {
         self.brushes = brushes
+        self.boardStore = boardStore
+        let boardOrigin = Whiteboard.rect(in: frame.size).origin
+        ink = boardStore?.load().map { InkModel(board: $0.moved(to: boardOrigin)) } ?? InkModel()
         lastBoardColor = brushes.boardColor
         paletteHost = FirstClickHostingView(rootView: BrushPalette(brushes: brushes))
-        boardHost = FirstClickHostingView(rootView: BoardToolbar(brushes: brushes))
+        boardHost = FirstClickHostingView(rootView: BoardToolbar(brushes: brushes, ink: ink))
         super.init(frame: frame)
 
-        let inkHost = PassthroughHostingView(rootView: InkView(ink: ink, brushes: brushes))
+        let inkHost = PassthroughHostingView(rootView: InkView(ink: ink, brushes: brushes, hasBoard: boardStore != nil))
         inkHost.frame = bounds
         inkHost.autoresizingMask = [.width, .height]
         addSubview(inkHost)
         addSubview(paletteHost)
         addSubview(boardHost)
-        boardHost.isHidden = !brushes.showsWhiteboard
+        boardHost.isHidden = !showsBoard
 
         // objectWillChange fires before the new values are stored, so read them on the next pass.
         stateObserver = brushes.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async { self?.stateDidChange() }
         }
+        if boardStore != nil {
+            // Any drawing change (the store waits for them to settle before writing).
+            boardObserver = ink.objectWillChange.sink { [weak self] in
+                DispatchQueue.main.async { self?.scheduleBoardSave() }
+            }
+        }
+    }
+
+    private var showsBoard: Bool { boardStore != nil && brushes.showsWhiteboard }
+
+    private func scheduleBoardSave() {
+        boardStore?.scheduleSave(ink.boardDocument(origin: Whiteboard.rect(in: bounds.size).origin))
+    }
+
+    /// Finishes any text being typed and writes the board now. Called when the pen closes.
+    func saveBoard() {
+        commitText()
+        scheduleBoardSave()
+        boardStore?.flush()
     }
 
     @available(*, unavailable)
@@ -71,7 +93,7 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
     override func layout() {
         super.layout()
         let palette = BrushPalette.size
-        paletteHost.frame = NSRect(x: 32, y: bounds.midY - palette.height / 2,
+        paletteHost.frame = NSRect(x: bounds.maxX - 32 - palette.width, y: bounds.midY - palette.height / 2,
                                    width: palette.width, height: palette.height)
         // Along the whiteboard's top edge, inside it.
         let toolbar = BoardToolbar.size
@@ -80,7 +102,7 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
     }
 
     private func stateDidChange() {
-        boardHost.isHidden = !brushes.showsWhiteboard
+        boardHost.isHidden = !showsBoard
         if brushes.boardTool != .select { ink.selectedID = nil }
         if brushes.boardColor != lastBoardColor {
             lastBoardColor = brushes.boardColor
@@ -139,7 +161,7 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
     private var boardRect: CGRect { Whiteboard.rect(in: bounds.size) }
 
     private func isOnBoard(_ point: CGPoint) -> Bool {
-        brushes.showsWhiteboard && boardRect.contains(point)
+        showsBoard && boardRect.contains(point)
     }
 
     /// Screen point → board (world) point, through the pan.
@@ -174,7 +196,7 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
         guard let tool = brushes.boardTool else {
             // Brushes draw on the board when started on it; spotlights always light the screen.
             let onBoard = !brushes.brush.isSpotlight && isOnBoard(screen)
-            ink.begin(at: onBoard ? point : screen, brush: brushes.brush, color: brushes.brush.inkColor, onBoard: onBoard)
+            ink.begin(at: onBoard ? point : screen, brush: brushes.brush, onBoard: onBoard)
             gesture = .stroke(onBoard: onBoard)
             return
         }
@@ -184,14 +206,11 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
         case .hand:
             break // handled above
         case .marker:
-            ink.begin(at: point, brush: .ink, color: brushes.boardColor.color, onBoard: true)
+            ink.begin(at: point, brush: .ink, ink: .board(brushes.boardColor), onBoard: true)
             gesture = .stroke(onBoard: true)
         case .select:
             ink.selectedID = ink.item(at: point)
-            dragStart = point
-            anchorStart = ink.selectedID.flatMap(ink.anchor(of:))
-            hasMoved = false
-            gesture = .select
+            gesture = .select(start: point, anchor: ink.selectedID.flatMap(ink.anchor(of:)), hasMoved: false)
         case .eraser:
             ink.beginErasing()
             ink.erase(at: point)
@@ -219,16 +238,15 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
             return
         case .stroke(let onBoard):
             ink.extend(to: onBoard ? point : screen)
-        case .select:
-            guard let selected = ink.selectedID, let dragStart, let anchorStart,
-                  let anchor = ink.anchor(of: selected) else { return }
+        case .select(let start, let anchorStart, let hasMoved):
+            guard let selected = ink.selectedID, let anchorStart, let anchor = ink.anchor(of: selected) else { return }
             // The anchor follows the pointer from where it started, landing on grid dots.
-            let target = snapped(CGPoint(x: anchorStart.x + point.x - dragStart.x,
-                                         y: anchorStart.y + point.y - dragStart.y), event)
+            let target = snapped(CGPoint(x: anchorStart.x + point.x - start.x,
+                                         y: anchorStart.y + point.y - start.y), event)
             guard target != anchor else { return }
             if !hasMoved {
                 ink.beginMove()
-                hasMoved = true
+                gesture = .select(start: start, anchor: anchorStart, hasMoved: true)
             }
             ink.move(selected, by: CGSize(width: target.x - anchor.x, height: target.y - anchor.y))
         case .erase:
@@ -247,11 +265,8 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
 
     override func mouseUp(with event: NSEvent) {
         switch gesture {
-        case nil, .pan: break
+        case nil, .pan, .select: break
         case .stroke: ink.end()
-        case .select:
-            dragStart = nil
-            anchorStart = nil
         case .erase: ink.endErasing()
         case .shape: ink.endShape()
         }
@@ -329,7 +344,7 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
     override func keyDown(with event: NSEvent) {
         let characters = event.charactersIgnoringModifiers?.lowercased()
         if event.keyCode == 49 { // Space
-            guard brushes.showsWhiteboard else { return super.keyDown(with: event) }
+            guard showsBoard else { return super.keyDown(with: event) }
             if !isSpaceHeld {
                 isSpaceHeld = true
                 updateCursor()
@@ -350,7 +365,7 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
             brushes.showsWhiteboard.toggle()
         } else if let brush = Brush(digit: characters) {
             brushes.brush = brush
-        } else if brushes.showsWhiteboard, let tool = BoardTool(key: characters) {
+        } else if showsBoard, let tool = BoardTool(key: characters) {
             brushes.boardTool = tool
         } else {
             super.keyDown(with: event)

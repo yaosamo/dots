@@ -68,7 +68,7 @@ enum BoardTool: String, CaseIterable, Identifiable {
 }
 
 /// Excalidraw's default stroke colors, used by the marker, shapes and text.
-enum BoardColor: String, CaseIterable, Identifiable {
+enum BoardColor: String, CaseIterable, Identifiable, Codable {
     case black, red, green, blue, orange
 
     var id: String { rawValue }
@@ -114,9 +114,9 @@ enum BoardGrid {
 enum BoardText {
     static let size: CGFloat = 26
 
-    static var nsFont: NSFont { .systemFont(ofSize: size, weight: .medium) }
-    static var font: Font { .system(size: size, weight: .medium) }
-    static var lineHeight: CGFloat { ceil(nsFont.ascender - nsFont.descender + nsFont.leading) }
+    static let nsFont = NSFont.systemFont(ofSize: size, weight: .medium)
+    static let font = Font.system(size: size, weight: .medium)
+    static let lineHeight = ceil(nsFont.ascender - nsFont.descender + nsFont.leading)
 
     static func size(of text: String) -> CGSize {
         let size = (text as NSString).size(withAttributes: [.font: nsFont])
@@ -170,7 +170,7 @@ extension CGRect {
 }
 
 /// Whiteboard shapes and text. Sized to the shapes, not the screen, like the stroke layers.
-struct ShapeLayer: View {
+struct ShapeLayer: View, Equatable {
     let shapes: [InkModel.Shape]
 
     var body: some View {
@@ -196,25 +196,32 @@ struct ShapeLayer: View {
     }
 }
 
-/// Excalidraw-like toolbar along the top of the whiteboard: tools, then colors.
+/// Excalidraw-like toolbar along the top of the whiteboard: tools, colors, then clear.
 struct BoardToolbar: View {
     private enum Metrics {
         static let cell: CGFloat = 40
         static let spacing: CGFloat = 4
         static let padding: CGFloat = 8
         static let divider: CGFloat = 1
+        static let clearWidth: CGFloat = 104
     }
 
     /// Excalidraw's selected-tool tint.
     private static let accent = Color(red: 0x69 / 255, green: 0x65 / 255, blue: 0xdb / 255)
 
+    /// Tools, a divider, colors, a divider, and the "Clear board" button.
     static var size: CGSize {
         let cells = CGFloat(BoardTool.allCases.count + BoardColor.allCases.count)
-        let width = Metrics.padding * 2 + cells * Metrics.cell + cells * Metrics.spacing + Metrics.divider
+        let dividers: CGFloat = 2
+        let gaps = cells + dividers // between all items, the clear button included
+        let width = Metrics.padding * 2 + cells * Metrics.cell + Metrics.clearWidth
+            + gaps * Metrics.spacing + dividers * Metrics.divider
         return CGSize(width: width, height: Metrics.cell + Metrics.padding * 2)
     }
 
     @ObservedObject var brushes: BrushState
+    /// For the clear button: enabled only while the board has something on it.
+    @ObservedObject var ink: InkModel
 
     var body: some View {
         HStack(spacing: Metrics.spacing) {
@@ -235,9 +242,7 @@ struct BoardToolbar: View {
                 .help("\(tool.title)  \(tool.key.uppercased())")
             }
 
-            Rectangle()
-                .fill(Color.black.opacity(0.1))
-                .frame(width: Metrics.divider, height: Metrics.cell - 12)
+            divider
 
             ForEach(BoardColor.allCases) { color in
                 Button { brushes.boardColor = color } label: {
@@ -254,6 +259,22 @@ struct BoardToolbar: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            divider
+
+            // Clears the board only (screen notes stay); ⌘Z brings it back while the pen is open.
+            Button { ink.clearBoard() } label: {
+                Label("Clear board", systemImage: "trash")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color(white: 0.2))
+                    .frame(width: Metrics.clearWidth, height: Metrics.cell)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.black.opacity(0.05)))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!ink.hasBoardItems)
+            .opacity(ink.hasBoardItems ? 1 : 0.35)
+            .help("⌘Z to undo")
         }
         .padding(Metrics.padding)
         .frame(width: Self.size.width, height: Self.size.height)
@@ -267,5 +288,11 @@ struct BoardToolbar: View {
                 .strokeBorder(Color.black.opacity(0.06))
         )
         .environment(\.colorScheme, .light)
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Color.black.opacity(0.1))
+            .frame(width: Metrics.divider, height: Metrics.cell - 12)
     }
 }

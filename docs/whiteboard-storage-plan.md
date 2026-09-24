@@ -1,6 +1,6 @@
 # Whiteboard storage, export and sharing — plan
 
-Status: planned, not implemented.
+Status: steps 1–2 built (one board on one screen, saved as JSON and restored). Export and sharing still planned.
 
 ## 1. Decide what belongs to the board
 
