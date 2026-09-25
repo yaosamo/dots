@@ -109,6 +109,7 @@ final class InkModel: ObservableObject {
 
     var boardStrokes: [Stroke] { strokes.filter(\.onBoard) }
     var hasBoardItems: Bool { !shapes.isEmpty || strokes.contains(where: \.onBoard) }
+    var hasScreenItems: Bool { strokes.contains { !$0.onBoard } }
     var screenStrokes: [Stroke] { strokes.filter { !$0.onBoard } }
 
     var finishedSpotlights: [Stroke] {
@@ -228,7 +229,7 @@ final class InkModel: ObservableObject {
         didErase = false
     }
 
-    /// Removes whatever the eraser touches. Shapes only erase from their outline, as in Excalidraw.
+    /// Removes whatever the board eraser touches. Shapes only erase from their outline, as in Excalidraw.
     func erase(at point: CGPoint) {
         let strokeCount = strokes.count, shapeCount = shapes.count
         strokes.removeAll { $0.onBoard && hits($0, point) }
@@ -270,6 +271,14 @@ final class InkModel: ObservableObject {
         isDrawing = false
         isDrawingShape = false
         selectedID = nil
+    }
+
+    /// Clears everything drawn on the screen, spotlights included, leaving the whiteboard. Undoable.
+    func clearScreen() {
+        guard hasScreenItems else { return }
+        checkpoint()
+        strokes.removeAll { !$0.onBoard }
+        isDrawing = false
     }
 
     /// Empties the whiteboard, leaving screen notes. Undoable.
@@ -346,7 +355,10 @@ struct InkView: View {
     let hasBoard: Bool
     @ObservedObject private var tuning = ShaderTuning.shared
 
-    private var showsBoard: Bool { hasBoard && brushes.showsWhiteboard }
+    /// False for the first frame, so a board that's already on flips in as the pen opens.
+    @State private var hasAppeared = false
+
+    private var showsBoard: Bool { hasBoard && brushes.showsWhiteboard && hasAppeared }
 
     var body: some View {
         GeometryReader { geometry in
@@ -365,6 +377,8 @@ struct InkView: View {
             }
         }
         .ignoresSafeArea()
+        // Next pass, so the first frame renders edge-on and the flip animates from there.
+        .onAppear { DispatchQueue.main.async { hasAppeared = true } }
     }
 
     /// The board's contents, drawn in world points, shifted by the pan and clipped to the board.
@@ -384,10 +398,8 @@ struct InkView: View {
         .frame(width: rect.width, height: rect.height, alignment: .topLeading)
         .clipShape(RoundedRectangle(cornerRadius: Whiteboard.cornerRadius, style: .continuous))
         .position(x: rect.midX, y: rect.midY)
-        // Comes and goes with the board.
-        .opacity(isShown ? 1 : 0)
-        .scaleEffect(isShown ? 1 : 0.96)
-        .animation(Whiteboard.animation, value: isShown)
+        // Flips with the board, so the drawing stays on it mid-turn.
+        .modifier(BoardFlip(isShown: isShown))
         .allowsHitTesting(false)
     }
 
@@ -451,7 +463,12 @@ private struct StrokeStack: View, Equatable {
 struct Whiteboard: View {
     static let scale: CGFloat = 0.8
     static let cornerRadius: CGFloat = 28
-    static let animation = Animation.spring(response: 0.35, dampingFraction: 0.9)
+    /// The flip in and out. The toolbar appears as it lands (PenCanvasView).
+    static let animation = Animation.spring(response: 0.55, dampingFraction: 0.8)
+    /// No spring on the way out: a spring overshoots past edge-on and lingers. A quick start that
+    /// eases into edge-on, so it doesn't stop dead (an ease-in did, and looked jerky).
+    static let closeAnimation = Animation.timingCurve(0.35, 0, 0.25, 1, duration: 0.32)
+    static let flipDuration: TimeInterval = 0.4
 
     /// The board's frame in a view (or screen) of `size`, top-left origin.
     static func rect(in size: CGSize) -> CGRect {
@@ -470,15 +487,16 @@ struct Whiteboard: View {
             let shape = RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
             shape
                 .fill(.white)
-                .shadow(color: .black.opacity(0.3), radius: 40, y: 12)
                 .overlay(alignment: .topLeading) { grid(for: board) }
                 .clipShape(shape)
+                // After the clip, or it cuts the shadow off. A wide soft spread plus a tight
+                // contact shadow, so the board floats without a hard dark edge.
+                .shadow(color: .black.opacity(0.18), radius: 48, y: 18)
+                .shadow(color: .black.opacity(0.08), radius: 4, y: 1)
                 .frame(width: board.width, height: board.height)
                 .position(x: board.midX, y: board.midY)
         }
-        .opacity(isShown ? 1 : 0)
-        .scaleEffect(isShown ? 1 : 0.96)
-        .animation(Self.animation, value: isShown)
+        .modifier(BoardFlip(isShown: isShown))
         .allowsHitTesting(false)
     }
 
@@ -493,6 +511,20 @@ struct Whiteboard: View {
         return GridDots(size: board.size)
             .equatable()
             .offset(x: -phase(board.minX + offset.width), y: -phase(board.minY + offset.height))
+    }
+}
+
+/// The whiteboard flips vertically, top over bottom around its horizontal axis: edge-on (so
+/// invisible, no fade needed) when hidden, face-on when shown. Shared by the board and its contents,
+/// which are separate views, so they turn as one. Both are full-screen views, so the turn is around
+/// the board's center.
+struct BoardFlip: ViewModifier {
+    let isShown: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .rotation3DEffect(.degrees(isShown ? 0 : -90), axis: (x: 1, y: 0, z: 0), perspective: 0.5)
+            .animation(isShown ? Whiteboard.animation : Whiteboard.closeAnimation, value: isShown)
     }
 }
 

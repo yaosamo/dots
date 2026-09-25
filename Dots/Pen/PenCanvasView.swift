@@ -28,7 +28,8 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
         /// Moving the selection: where the drag and the item's anchor started (world points),
         /// and whether anything has moved yet (the first move takes the undo snapshot).
         case select(start: CGPoint, anchor: CGPoint?, hasMoved: Bool)
-        case erase, shape
+        case erase
+        case shape
     }
 
     private var gesture: Gesture?
@@ -45,7 +46,7 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
         let boardOrigin = Whiteboard.rect(in: frame.size).origin
         ink = boardStore?.load().map { InkModel(board: $0.moved(to: boardOrigin)) } ?? InkModel()
         lastBoardColor = brushes.boardColor
-        paletteHost = FirstClickHostingView(rootView: BrushPalette(brushes: brushes))
+        paletteHost = FirstClickHostingView(rootView: BrushPalette(brushes: brushes, ink: ink))
         boardHost = FirstClickHostingView(rootView: BoardToolbar(brushes: brushes, ink: ink))
         super.init(frame: frame)
 
@@ -55,7 +56,9 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
         addSubview(inkHost)
         addSubview(paletteHost)
         addSubview(boardHost)
-        boardHost.isHidden = !showsBoard
+        // Hidden until the board's flip lands, even when it opens with the pen.
+        boardHost.isHidden = true
+        updateToolbarVisibility()
 
         // objectWillChange fires before the new values are stored, so read them on the next pass.
         stateObserver = brushes.objectWillChange.sink { [weak self] in
@@ -70,6 +73,11 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
     }
 
     private var showsBoard: Bool { boardStore != nil && brushes.showsWhiteboard }
+
+    /// Where this screen's pen still takes clicks in pointer mode: its toolbars and the whiteboard.
+    func isInteractive(at point: CGPoint) -> Bool {
+        paletteHost.frame.contains(point) || (!boardHost.isHidden && boardHost.frame.contains(point)) || isOnBoard(point)
+    }
 
     private func scheduleBoardSave() {
         boardStore?.scheduleSave(ink.boardDocument(origin: Whiteboard.rect(in: bounds.size).origin))
@@ -93,16 +101,46 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
     override func layout() {
         super.layout()
         let palette = BrushPalette.size
-        paletteHost.frame = NSRect(x: bounds.maxX - 32 - palette.width, y: bounds.midY - palette.height / 2,
-                                   width: palette.width, height: palette.height)
-        // Along the whiteboard's top edge, inside it.
+        // Runs to the screen's right edge so the palette can slide in from beyond it.
+        paletteHost.frame = NSRect(x: bounds.maxX - BrushPalette.edgeInset - palette.width, y: bounds.midY - palette.height / 2,
+                                   width: palette.width + BrushPalette.edgeInset, height: palette.height)
+        boardHost.frame = toolbarFrame
+    }
+
+    /// Along the whiteboard's top edge, inside it.
+    private var toolbarFrame: NSRect {
         let toolbar = BoardToolbar.size
-        boardHost.frame = NSRect(x: bounds.midX - toolbar.width / 2, y: boardRect.minY + 16,
-                                 width: toolbar.width, height: toolbar.height)
+        return NSRect(x: bounds.midX - toolbar.width / 2, y: boardRect.minY + 16,
+                      width: toolbar.width, height: toolbar.height)
+    }
+
+    /// Once the board's flip has mostly landed, the toolbar moves down from above the board into
+    /// its place inside it, fading in. It hides right away when the board goes.
+    private func updateToolbarVisibility() {
+        guard showsBoard else {
+            boardHost.isHidden = true
+            return
+        }
+        guard boardHost.isHidden else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Whiteboard.flipDuration * 0.6) { [weak self] in
+            guard let self, self.showsBoard, self.boardHost.isHidden else { return }
+            let frame = self.toolbarFrame
+            // Start just above the board's top edge (flipped view: smaller y is up).
+            self.boardHost.frame = frame.offsetBy(dx: 0, dy: -(frame.height + 28))
+            self.boardHost.alphaValue = 0
+            self.boardHost.isHidden = false
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.4
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
+                self.boardHost.animator().frame = frame
+                self.boardHost.animator().alphaValue = 1
+            }
+            self.window?.invalidateCursorRects(for: self)
+        }
     }
 
     private func stateDidChange() {
-        boardHost.isHidden = !showsBoard
+        updateToolbarVisibility()
         if brushes.boardTool != .select { ink.selectedID = nil }
         if brushes.boardColor != lastBoardColor {
             lastBoardColor = brushes.boardColor
@@ -184,6 +222,9 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
             return
         }
         window?.makeFirstResponder(self)
+        // Pointer mode: clicks on empty areas already pass through to the apps below; one that
+        // lands on ink or the whiteboard does nothing.
+        guard !brushes.isPointer else { return }
         let screen = point(for: event)
         let point = world(screen)
         gesture = nil

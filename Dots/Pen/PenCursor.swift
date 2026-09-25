@@ -11,7 +11,8 @@ enum PenCursor {
 
     /// The cursor for the current tool: a pencil for brushes and the marker, system cursors otherwise.
     static func cursor(for state: BrushState) -> NSCursor {
-        switch state.boardTool {
+        if state.isPointer { return .arrow }
+        return switch state.boardTool {
         case nil: cursor(for: state.brush)
         case .marker: cursor(key: "board.\(state.boardColor.rawValue)", color: state.boardColor.nsColor)
         case .select: .arrow

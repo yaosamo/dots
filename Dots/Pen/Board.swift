@@ -226,8 +226,9 @@ struct BoardToolbar: View {
     var body: some View {
         HStack(spacing: Metrics.spacing) {
             ForEach(BoardTool.allCases) { tool in
-                let isSelected = brushes.boardTool == tool
-                Button { brushes.boardTool = tool } label: {
+                let isSelected = !brushes.isPointer && brushes.boardTool == tool
+                // Clicking the active tool again turns drawing off (pointer mode).
+                Button { if isSelected { brushes.isPointer = true } else { brushes.boardTool = tool } } label: {
                     Image(systemName: tool.symbol)
                         .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(isSelected ? Self.accent : Color(white: 0.2))

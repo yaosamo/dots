@@ -81,6 +81,18 @@ enum Brush: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+/// The palette's entrance: slides in from beyond the screen's right edge, a beat after the step before.
+private struct SlideInFromRight: ViewModifier {
+    let hasAppeared: Bool
+    let step: Int
+
+    func body(content: Content) -> some View {
+        content
+            .offset(x: hasAppeared ? 0 : BrushPalette.size.width + BrushPalette.edgeInset)
+            .animation(.spring(response: 0.45, dampingFraction: 0.8).delay(Double(step) * 0.035), value: hasAppeared)
+    }
+}
+
 /// The selected brush, whiteboard tool and color, shared by every screen's canvas.
 /// Whether the whiteboard is up is remembered between launches; the tool isn't: the board opens
 /// with the marker and the screen with the electric brush (see `selectDefaultTool`).
@@ -90,7 +102,10 @@ final class BrushState: ObservableObject {
 
     /// Picking a brush switches from any whiteboard tool back to drawing with it.
     @Published var brush = Brush.electric {
-        didSet { boardTool = nil }
+        didSet {
+            boardTool = nil
+            isPointer = false
+        }
     }
 
     @Published var showsWhiteboard: Bool {
@@ -101,7 +116,12 @@ final class BrushState: ObservableObject {
     }
 
     /// nil draws with `brush`.
-    @Published var boardTool: BoardTool?
+    @Published var boardTool: BoardTool? {
+        didSet { if boardTool != nil { isPointer = false } }
+    }
+    /// No tool: clicking the active tool again turns drawing off, so the normal cursor works on the
+    /// apps below while the ink stays up. Picking any tool turns drawing back on.
+    @Published var isPointer = false
     @Published var boardColor = BoardColor.black
 
     init() {
@@ -146,7 +166,7 @@ extension View {
     }
 }
 
-/// Vertical toolbar on the right edge: the brushes, then the whiteboard toggle.
+/// Vertical toolbar on the right edge: the brushes and "clear screen", then the whiteboard toggle.
 struct BrushPalette: View {
     private enum Metrics {
         static let cell: CGFloat = 48
@@ -156,19 +176,43 @@ struct BrushPalette: View {
         static let dividerHeight: CGFloat = 1
     }
 
-    /// Brushes plus the whiteboard button, with a divider between them.
+    /// Brushes and "clear screen", a divider, then the whiteboard button.
     static var size: CGSize {
-        let cells = CGFloat(Brush.allCases.count + 1)
+        let cells = CGFloat(Brush.allCases.count + 2)
         let height = Metrics.padding * 2 + cells * Metrics.cell + cells * Metrics.spacing + Metrics.dividerHeight
         return CGSize(width: Metrics.cell + Metrics.padding * 2, height: height)
     }
 
+    /// How far outside the palette the screen's right edge is; the entrance starts beyond it.
+    static let edgeInset: CGFloat = 32
+
     @ObservedObject var brushes: BrushState
+    /// For "clear screen": enabled only while something is drawn on the screen.
+    @ObservedObject var ink: InkModel
+
+    /// False for the first frame; then the pill and its buttons slide in from the screen's edge.
+    @State private var hasAppeared = false
 
     var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Self.size.width / 2, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .modifier(SlideInFromRight(hasAppeared: hasAppeared, step: 0))
+            buttons
+        }
+        .frame(width: Self.size.width, height: Self.size.height)
+        .environment(\.colorScheme, .dark)
+        // The host view reaches to the screen's edge (PenCanvasView), so nothing is clipped on the way in.
+        .frame(width: Self.size.width + Self.edgeInset, alignment: .leading)
+        .onAppear { DispatchQueue.main.async { hasAppeared = true } }
+    }
+
+    private var buttons: some View {
         VStack(spacing: Metrics.spacing) {
             ForEach(Array(Brush.allCases.enumerated()), id: \.element) { index, brush in
-                Button { brushes.brush = brush } label: {
+                Button {
+                    if isActive(brush) { brushes.isPointer = true } else { brushes.brush = brush }
+                } label: {
                     Circle()
                         .fill(brush.swatch)
                         .frame(width: Metrics.swatch, height: Metrics.swatch)
@@ -182,7 +226,23 @@ struct BrushPalette: View {
                 }
                 .buttonStyle(.plain)
                 .help("\(brush.title)  \(index + 1)")
+                .modifier(SlideInFromRight(hasAppeared: hasAppeared, step: index + 1))
             }
+
+            // One click clears everything drawn on the screen; the whiteboard is left alone
+            // (it has its own "Clear board"). ⌘Z brings it back.
+            Button { ink.clearScreen() } label: {
+                Image(systemName: "eraser")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .frame(width: Metrics.cell, height: Metrics.cell)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!ink.hasScreenItems)
+            .opacity(ink.hasScreenItems ? 1 : 0.35)
+            .help("Clear screen (⌘Z to undo)")
+            .modifier(SlideInFromRight(hasAppeared: hasAppeared, step: Brush.allCases.count + 1))
 
             Rectangle()
                 .fill(.white.opacity(0.2))
@@ -201,13 +261,11 @@ struct BrushPalette: View {
             }
             .buttonStyle(.plain)
             .help("Whiteboard  W")
+            .modifier(SlideInFromRight(hasAppeared: hasAppeared, step: Brush.allCases.count + 2))
         }
-        .frame(width: Self.size.width, height: Self.size.height)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Self.size.width / 2, style: .continuous))
-        .environment(\.colorScheme, .dark)
     }
 
     private func isActive(_ brush: Brush) -> Bool {
-        brushes.boardTool == nil && brushes.brush == brush
+        !brushes.isPointer && brushes.boardTool == nil && brushes.brush == brush
     }
 }
