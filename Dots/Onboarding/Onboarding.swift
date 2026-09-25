@@ -1,33 +1,41 @@
 import AppKit
 import SwiftUI
 
-/// Full-screen welcome (first launch) and dot setup (the bar's + dot). Both end with the chosen
-/// dots flying into the bar, where the real bar takes over as the frost clears.
+/// The two full-screen flows: the first-launch welcome (Welcome.swift) and dot setup behind the
+/// bar's + dot (below). Both end with the chosen dots flying into the bar, where the real bar
+/// takes over as the overlay clears.
 @MainActor
 final class OnboardingController {
-    private let panel = FloatingPanel(level: DotsLevel.onboarding, keyable: true)
-    private var state: OnboardingState?
+    enum Mode { case welcome, setup }
 
-    var isVisible: Bool { state != nil }
+    private let panel = FloatingPanel(level: DotsLevel.onboarding, keyable: true)
+    private(set) var isVisible = false
 
     /// `onReveal` gets the chosen dots as they land in the bar, before the overlay fades.
-    func show(mode: OnboardingState.Mode, enabled: Set<Dot>, onReveal: @escaping (Set<Dot>) -> Void) {
-        guard state == nil, let screen = NSScreen.primary else { return }
-        let state = OnboardingState(mode: mode, enabled: enabled)
-        self.state = state
+    func show(mode: Mode, enabled: Set<Dot>, onReveal: @escaping (Set<Dot>) -> Void) {
+        guard !isVisible, let screen = NSScreen.primary else { return }
+        isVisible = true
+        let barSlots = { DotsBarMetrics.slotCenters(slots: $0, on: screen) }
+        let close: () -> Void = { [weak self] in self?.close() }
 
-        let finish: (Bool) -> Void = { [weak self, weak state] apply in
-            state?.finish(apply: apply, onReveal: onReveal) { self?.close() }
+        switch mode {
+        case .welcome:
+            let state = WelcomeState()
+            // The welcome has to be finished with Done.
+            panel.onCancel = nil
+            panel.contentView = FirstClickHostingView(rootView: WelcomeView(
+                state: state, barSlots: barSlots,
+                onDone: { state.finish(onReveal: onReveal, completion: close) }
+            ))
+        case .setup:
+            let state = SetupState(enabled: enabled)
+            let finish = { (apply: Bool) in state.finish(apply: apply, onReveal: onReveal, completion: close) }
+            panel.onCancel = { finish(false) }
+            panel.contentView = FirstClickHostingView(rootView: SetupView(
+                state: state, barSlots: barSlots, onDone: { finish(true) }, onCancel: { finish(false) }
+            ))
         }
-        // Esc cancels setup; the welcome has to be finished with Done.
-        panel.onCancel = mode == .setup ? { finish(false) } : nil
         panel.setFrame(screen.frame, display: false)
-        panel.contentView = FirstClickHostingView(rootView: OnboardingView(
-            state: state,
-            barSlots: { DotsBarMetrics.slotCenters(slots: $0, on: screen) },
-            onDone: { finish(true) },
-            onCancel: { finish(false) }
-        ))
         NSApp.activate()
         panel.makeKeyAndOrderFront(nil)
     }
@@ -35,49 +43,35 @@ final class OnboardingController {
     private func close() {
         panel.orderOut(nil)
         panel.contentView = nil
-        state = nil
+        isVisible = false
     }
 }
 
+/// Dot setup: the dots fly down from the bar onto a card per tool, where each can be switched on
+/// or off, then fly back up.
 @MainActor
-final class OnboardingState: ObservableObject {
-    enum Mode { case welcome, setup }
+final class SetupState: ObservableObject {
+    /// Where the dots are: one per card, or in the bar.
+    enum Phase { case choose, bar }
 
-    /// Where the dots are: introduced mid-screen, one per card, or sitting in the bar.
-    enum Phase { case intro, choose, bar }
-
-    let mode: Mode
     private let original: Set<Dot>
 
-    @Published var phase: Phase
+    /// Starts in the bar, where the dots are, then flies them down to the cards.
+    @Published var phase = Phase.bar
     @Published var selection: Set<Dot>
     @Published var isFrosted = false
     /// Closing: the frost clears edges-first and the overlay's dots hand over to the bar's.
     @Published var isDismissing = false
-    @Published var isIntroShown = false
     private var isFinishing = false
 
-    init(mode: Mode, enabled: Set<Dot>) {
-        self.mode = mode
+    init(enabled: Set<Dot>) {
         original = enabled
-        // Setup starts with the dots where they are in the bar, then flies them down to the cards.
-        phase = mode == .welcome ? .intro : .bar
-        selection = mode == .welcome ? Set(Dot.allCases) : enabled
+        selection = enabled
     }
 
     func start() {
-        switch mode {
-        case .welcome:
-            withAnimation(.easeOut(duration: 1.2)) { isFrosted = true }
-            after(0.5) { self.isIntroShown = true }
-        case .setup:
-            withAnimation(.easeOut(duration: 0.4)) { isFrosted = true }
-            after(0.05) { self.phase = .choose }
-        }
-    }
-
-    func getStarted() {
-        phase = .choose
+        withAnimation(.easeOut(duration: 0.4)) { isFrosted = true }
+        after(0.05) { self.phase = .choose }
     }
 
     func toggle(_ dot: Dot) {
@@ -104,7 +98,7 @@ final class OnboardingState: ObservableObject {
     }
 }
 
-struct OnboardingView: View {
+struct SetupView: View {
     private enum Metrics {
         static let cardSize = CGSize(width: 250, height: 290)
         static let cardSpacing: CGFloat = 24
@@ -112,11 +106,9 @@ struct OnboardingView: View {
         /// The card's dot is drawn by the dot layer, centered this far below the card's top.
         static let cardDotCenter: CGFloat = 76
         static let cardDot: CGFloat = 64
-        static let introDot: CGFloat = 34
-        static let introSpacing: CGFloat = 64
     }
 
-    @ObservedObject var state: OnboardingState
+    @ObservedObject var state: SetupState
     /// Centers of the bar's slots for a given slot count, in this view's coordinates.
     let barSlots: (Int) -> [CGPoint]
     let onDone: () -> Void
@@ -132,7 +124,6 @@ struct OnboardingView: View {
                     .overlay(Color.black.opacity(0.55))
                     .mask(FrostSweep(progress: state.isFrosted ? 1 : 0, recedesToCenter: state.isDismissing))
 
-                intro(in: size)
                 choose(cards: cards, midX: size.width / 2)
                 plus
                 ForEach(Array(Dot.allCases.enumerated()), id: \.element) { index, dot in
@@ -146,29 +137,6 @@ struct OnboardingView: View {
         .onAppear { state.start() }
     }
 
-    // MARK: Intro
-
-    private func intro(in size: CGSize) -> some View {
-        let isShown = state.phase == .intro && state.isIntroShown
-        return VStack(spacing: 14) {
-            Text("Meet Dots")
-                .font(.system(size: 48, weight: .bold))
-            Text("Small tools that live at the top of your screen.")
-                .font(.system(size: 20))
-                .foregroundStyle(.secondary)
-            Button("Get started", action: state.getStarted)
-                .buttonStyle(PillButtonStyle())
-                .keyboardShortcut(.defaultAction)
-                .padding(.top, 22)
-                .disabled(state.phase != .intro)
-        }
-        .opacity(isShown ? 1 : 0)
-        .offset(y: isShown ? 0 : 12)
-        .animation(isShown ? .easeOut(duration: 0.5).delay(0.6) : .easeIn(duration: 0.2), value: isShown)
-        .position(x: size.width / 2, y: size.height / 2 + 90)
-        .allowsHitTesting(isShown)
-    }
-
     // MARK: Choose
 
     /// Cards are centered, so the heading and buttons share the screen's `midX`.
@@ -178,7 +146,7 @@ struct OnboardingView: View {
         let bottom = cards.last?.maxY ?? 0
         return ZStack {
             VStack(spacing: 10) {
-                Text(state.mode == .welcome ? "Pick your dots" : "Choose your dots")
+                Text("Choose your dots")
                     .font(.system(size: 34, weight: .bold))
                 Text("Each dot is a tool. Turn on the ones you need, and add more any time from + in the bar.")
                     .font(.system(size: 16))
@@ -198,16 +166,13 @@ struct OnboardingView: View {
             }
 
             HStack(spacing: 12) {
-                if state.mode == .setup {
-                    Button("Cancel", action: onCancel)
-                        .buttonStyle(PillButtonStyle(isProminent: false))
-                        .keyboardShortcut(.cancelAction)
-                        .disabled(!isShown)
-                }
+                Button("Cancel", action: onCancel)
+                    .buttonStyle(PillButtonStyle(isProminent: false))
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(!isShown)
                 Button("Done", action: onDone)
                     .buttonStyle(PillButtonStyle())
                     .keyboardShortcut(.defaultAction)
-                    // Off while hidden too, so Return during the intro can't reach it.
                     .disabled(!isShown || state.selection.isEmpty)
             }
             .position(x: midX, y: bottom + 64)
@@ -258,7 +223,6 @@ struct OnboardingView: View {
         let isSelected = state.selection.contains(dot)
         let placement = placement(of: dot, index: index, cards: cards, size: size)
         let fill: Color = switch state.phase {
-        case .intro: dot.tint
         case .choose: isSelected ? dot.tint : .white.opacity(0.14)
         case .bar: .white.opacity(0.9)
         }
@@ -278,7 +242,6 @@ struct OnboardingView: View {
             .animation(.easeOut(duration: 0.2), value: state.selection)
             .animation(.easeOut(duration: 0.2), value: state.isDismissing)
             .animation(.spring(response: 0.65, dampingFraction: 0.82).delay(Double(index) * 0.05), value: state.phase)
-            .animation(.spring(response: 0.5, dampingFraction: 0.55).delay(Double(index) * 0.14), value: state.isIntroShown)
             .position(placement.center)
             .allowsHitTesting(false)
     }
@@ -292,12 +255,6 @@ struct OnboardingView: View {
 
     private func placement(of dot: Dot, index: Int, cards: [CGRect], size: CGSize) -> Placement {
         switch state.phase {
-        case .intro:
-            let offset = CGFloat(index) - CGFloat(Dot.allCases.count - 1) / 2
-            return Placement(center: CGPoint(x: size.width / 2 + offset * Metrics.introSpacing, y: size.height / 2 - 40),
-                             diameter: Metrics.introDot,
-                             scale: state.isIntroShown ? 1 : 0.01,
-                             opacity: state.isIntroShown ? 1 : 0)
         case .choose:
             let card = cards[index]
             return Placement(center: CGPoint(x: card.midX, y: card.minY + Metrics.cardDotCenter),

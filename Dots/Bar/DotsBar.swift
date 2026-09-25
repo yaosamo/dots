@@ -36,13 +36,14 @@ enum DotsBarMetrics {
 final class DotsBarController {
     private let panel = FloatingPanel(level: DotsLevel.bar, keyable: false)
     private let settings: DotSettings
+    private let entrance = BarEntrance()
     private var screenObserver: NSObjectProtocol?
 
     init(coordinator: DotsCoordinator) {
         settings = coordinator.settings
         panel.collectionBehavior.insert(.stationary)
         panel.contentView = FirstClickHostingView(
-            rootView: DotsBarView().environmentObject(coordinator).environmentObject(coordinator.settings)
+            rootView: DotsBarView(entrance: entrance).environmentObject(coordinator).environmentObject(coordinator.settings)
         )
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
@@ -52,9 +53,14 @@ final class DotsBarController {
     }
 
     /// Also resizes the bar to the enabled dots, so call it after they change.
-    func show() {
+    /// `dropIn`: the dots fall in one after another (at launch). Otherwise they're simply there,
+    /// e.g. after the welcome, whose own dots have just landed in their places.
+    func show(dropIn: Bool = false) {
         position()
+        if dropIn { entrance.hasLanded = false }
         panel.orderFrontRegardless()
+        // Next pass, so the first frame draws them above the bar and the fall animates.
+        if dropIn { DispatchQueue.main.async { self.entrance.hasLanded = true } }
     }
 
     func hide() {
@@ -67,20 +73,29 @@ final class DotsBarController {
     }
 }
 
+/// Whether the dots are in place; false while they're about to fall in at launch.
+@MainActor
+final class BarEntrance: ObservableObject {
+    @Published var hasLanded = true
+}
+
 struct DotsBarView: View {
+    @ObservedObject var entrance: BarEntrance
     @EnvironmentObject private var coordinator: DotsCoordinator
     @EnvironmentObject private var settings: DotSettings
 
     var body: some View {
         GlassGroup {
             HStack(spacing: DotsBarMetrics.spacing) {
-                ForEach(settings.enabled) { dot in
+                ForEach(Array(settings.enabled.enumerated()), id: \.element) { index, dot in
                     DotButton(dot: dot, isActive: coordinator.active.contains(dot)) {
                         coordinator.toggle(dot)
                     }
+                    .modifier(DropIn(hasLanded: entrance.hasLanded, index: index))
                 }
                 if settings.showsPlus {
                     PlusButton(action: coordinator.showSetup)
+                        .modifier(DropIn(hasLanded: entrance.hasLanded, index: settings.enabled.count))
                 }
             }
         }
@@ -99,17 +114,18 @@ private struct DotButton: View {
     let action: () -> Void
 
     @State private var isHovering = false
+    @State private var icon = IconPose.hidden
 
     var body: some View {
         Button(action: action) {
-            // Plain dot at rest; on hover it grows and shows its icon.
+            // Plain dot at rest; on hover it grows and its icon jumps in.
             DotSurface(tint: isActive ? dot.tint : nil, diameter: diameter) {
-                if isHovering {
-                    Image(systemName: dot.symbol)
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(DotSurfaceStyle.glyphColor(isActive: isActive))
-                        .transition(.opacity)
-                }
+                Image(systemName: dot.symbol)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(DotSurfaceStyle.glyphColor(isActive: isActive))
+                    .scaleEffect(icon.scale)
+                    .offset(icon.offset)
+                    .opacity(icon.opacity)
             }
             .frame(width: DotsBarMetrics.slot, height: DotsBarMetrics.slot)
             .contentShape(Circle())
@@ -118,10 +134,55 @@ private struct DotButton: View {
         .help("\(dot.title)  \(dot.shortcutLabel)")
         .onHover { hovering in
             withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) { isHovering = hovering }
+            hovering ? jumpIn() : fadeOut()
         }
     }
 
     private var diameter: CGFloat { isHovering ? 24 : DotsBarMetrics.dotDiameter }
+
+    /// From the bottom-right corner, a hop up past the middle, then a springy landing in it.
+    private func jumpIn() {
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) { icon = .hidden }
+        withAnimation(.easeOut(duration: 0.13)) {
+            icon = .apex
+        } completion: {
+            guard isHovering else { return }
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.5)) { icon = .landed }
+        }
+    }
+
+    private func fadeOut() {
+        withAnimation(.easeIn(duration: 0.1)) { icon.opacity = 0 }
+    }
+}
+
+/// Where the hover icon is along its jump.
+private struct IconPose {
+    var offset: CGSize
+    var scale: CGFloat
+    var opacity: Double
+
+    /// Small, tucked into the grown dot's bottom-right corner.
+    static let hidden = IconPose(offset: CGSize(width: 7, height: 7), scale: 0.3, opacity: 0)
+    /// Top of the hop: a little past the middle and a little big.
+    static let apex = IconPose(offset: CGSize(width: 2, height: -5), scale: 1.12, opacity: 1)
+    static let landed = IconPose(offset: .zero, scale: 1, opacity: 1)
+}
+
+/// Launch cascade: each dot drops from above the bar (just under the menu bar) and bounces into
+/// place, a beat after the one before it.
+private struct DropIn: ViewModifier {
+    let hasLanded: Bool
+    let index: Int
+
+    func body(content: Content) -> some View {
+        content
+            .offset(y: hasLanded ? 0 : -DotsBarMetrics.height)
+            .animation(hasLanded ? .spring(response: 0.5, dampingFraction: 0.55).delay(0.25 + Double(index) * 0.09) : nil,
+                       value: hasLanded)
+    }
 }
 
 /// The last slot while some tools are off: opens the dot setup.

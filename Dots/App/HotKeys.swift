@@ -6,9 +6,9 @@ import Carbon.HIToolbox
 final class HotKeyCenter {
     static let shared = HotKeyCenter()
 
-    /// ⌃⌥, used by every Dots shortcut.
-    static let modifiers = UInt32(controlKey | optionKey)
-    static let modifierFlags: NSEvent.ModifierFlags = [.control, .option]
+    /// ⌃⇧, used by every Dots shortcut. (⌘⇧3–6 are the system screenshot keys, ⇧ alone types symbols.)
+    static let modifiers = UInt32(controlKey | shiftKey)
+    static let modifierFlags: NSEvent.ModifierFlags = [.control, .shift]
     private static let signature: OSType = 0x444F_5453 // "DOTS"
 
     private var actions: [UInt32: () -> Void] = [:]

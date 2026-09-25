@@ -4,7 +4,7 @@ import SwiftUI
 
 /// The tools. New ones join the end; each keeps its shortcut number for good.
 enum Dot: Int, CaseIterable, Identifiable {
-    case camera, tasks, pen
+    case camera, tasks, pen, timer, clipboard
 
     var id: Int { rawValue }
 
@@ -13,6 +13,8 @@ enum Dot: Int, CaseIterable, Identifiable {
         case .camera: "Selfie camera"
         case .tasks: "Tasks"
         case .pen: "Draw on screen"
+        case .timer: "Timer"
+        case .clipboard: "Clipboard"
         }
     }
 
@@ -22,6 +24,8 @@ enum Dot: Int, CaseIterable, Identifiable {
         case .camera: "A floating selfie bubble for calls and recordings. Resize it, reshape it, drag it anywhere."
         case .tasks: "A quick list over everything. Jot a task, check it off, get back to work."
         case .pen: "Draw on any screen, spotlight what matters, or sketch on a whiteboard."
+        case .timer: "A little die that tumbles to the bottom of your screen and counts down. Click to start."
+        case .clipboard: "Your last five copies, one click away from being copied again."
         }
     }
 
@@ -33,6 +37,8 @@ enum Dot: Int, CaseIterable, Identifiable {
         case .camera: "camera.fill"
         case .tasks: "checklist"
         case .pen: "pencil.tip"
+        case .timer: "die.face.5.fill"
+        case .clipboard: "doc.on.clipboard"
         }
     }
 
@@ -41,12 +47,14 @@ enum Dot: Int, CaseIterable, Identifiable {
         case .camera: .green
         case .tasks: .orange
         case .pen: .red
+        case .timer: .purple
+        case .clipboard: .blue
         }
     }
 
-    /// ⌃⌥1, ⌃⌥2, … fixed per tool, whichever dots are enabled.
+    /// ⌃⇧1, ⌃⇧2, … fixed per tool, whichever dots are enabled.
     var keyEquivalent: String { String(rawValue + 1) }
-    var shortcutLabel: String { "⌃⌥\(keyEquivalent)" }
+    var shortcutLabel: String { "⌃⇧\(keyEquivalent)" }
 
     fileprivate var keyCode: Int {
         [kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4, kVK_ANSI_5,
@@ -76,6 +84,8 @@ final class DotsCoordinator: ObservableObject {
     private var camera: CameraController?
     private var tasks: TaskOverlayController?
     private var pen: PenController?
+    private var timer: DiceTimerController?
+    private var clipboard: ClipboardController?
     private var shaderLab: ShaderLabController?
     private let onboarding = OnboardingController()
 
@@ -83,19 +93,28 @@ final class DotsCoordinator: ObservableObject {
         camera = CameraController { [weak self] in self?.set(.camera, isOn: $0) }
         tasks = TaskOverlayController { [weak self] in self?.set(.tasks, isOn: $0) }
         pen = PenController { [weak self] in self?.set(.pen, isOn: $0) }
+        timer = DiceTimerController { [weak self] in self?.set(.timer, isOn: $0) }
+        clipboard = ClipboardController { [weak self] in self?.set(.clipboard, isOn: $0) }
         shaderLab = ShaderLabController(
             onPreviewTasks: { [weak self] in self?.toggle(.tasks) },
             onTogglePen: { [weak self] in self?.toggle(.pen) }
         )
         bar = DotsBarController(coordinator: self)
         statusMenu = StatusMenuController(coordinator: self)
-        registerHotKeys()
+        syncEnabledDots()
 
         if settings.hasCompletedWelcome {
-            bar?.show()
+            bar?.show(dropIn: true)
         } else {
             showWelcome()
         }
+        #if DEBUG
+        // For testing without shortcuts: `Dots -open timer` opens that dot at launch.
+        if let name = UserDefaults.standard.string(forKey: "open"),
+           let dot = Dot.allCases.first(where: { $0.storageKey == name }) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.feature(for: dot)?.show() }
+        }
+        #endif
     }
 
     func toggle(_ dot: Dot) {
@@ -110,6 +129,8 @@ final class DotsCoordinator: ObservableObject {
         case .pen:
             tasks?.hide()
             pen?.toggle()
+        case .timer, .clipboard:
+            feature(for: dot)?.toggle()
         }
     }
 
@@ -123,7 +144,7 @@ final class DotsCoordinator: ObservableObject {
         present(.setup)
     }
 
-    private func present(_ mode: OnboardingState.Mode) {
+    private func present(_ mode: OnboardingController.Mode) {
         guard !onboarding.isVisible else { return }
         tasks?.hide()
         pen?.hide()
@@ -140,7 +161,7 @@ final class DotsCoordinator: ObservableObject {
         for dot in Dot.allCases where !selection.contains(dot) {
             feature(for: dot)?.hide()
         }
-        registerHotKeys()
+        syncEnabledDots()
         bar?.show()
     }
 
@@ -149,7 +170,15 @@ final class DotsCoordinator: ObservableObject {
         case .camera: camera
         case .tasks: tasks
         case .pen: pen
+        case .timer: timer
+        case .clipboard: clipboard
         }
+    }
+
+    /// Shortcuts for the enabled dots, and the clipboard history only while its dot is on.
+    private func syncEnabledDots() {
+        registerHotKeys()
+        clipboard?.history.setWatching(settings.isEnabled(.clipboard))
     }
 
     private func registerHotKeys() {
