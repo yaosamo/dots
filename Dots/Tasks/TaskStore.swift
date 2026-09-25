@@ -48,6 +48,13 @@ final class TaskStore: ObservableObject {
         tasks[index].title = trimmed
     }
 
+    /// Drag and drop: puts `id` where `target` is, shifting the tasks between them.
+    func move(_ id: TaskItem.ID, to target: TaskItem.ID) {
+        guard id != target, let from = tasks.firstIndex(where: { $0.id == id }),
+              let to = tasks.firstIndex(where: { $0.id == target }) else { return }
+        tasks.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+    }
+
     func delete(_ id: TaskItem.ID) {
         tasks.removeAll { $0.id == id }
     }

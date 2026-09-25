@@ -184,8 +184,9 @@ struct TaskOverlayView: View {
 
     private enum Metrics {
         static let columnWidth: CGFloat = 780
-        /// Room beside the rows so the selected card's shadow isn't clipped by the scroll view.
-        static let shadowRoom: CGFloat = 20
+        /// Room beside the rows so shadows aren't clipped by the scroll view and its fade mask.
+        /// Sized for the dragged row: 16pt blur plus its 1.02 scale (~8pt a side), with margin.
+        static let shadowRoom: CGFloat = 40
         static let topFade: CGFloat = 28
         static let bottomFade: CGFloat = 240
     }
@@ -221,6 +222,9 @@ struct TaskOverlayView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var draft = ""
+    /// The task being dragged to reorder, and where every row sits (list coordinates).
+    @State private var drag: TaskDrag?
+    @State private var rowFrames: [TaskItem.ID: CGRect] = [:]
     @State private var isFrosted = false
     @State private var isRevealed = false
     @FocusState private var field: Field?
@@ -232,6 +236,8 @@ struct TaskOverlayView: View {
                 .overlay(palette.scrim)
                 .mask(FrostSweep(progress: isFrosted ? 1 : 0, recedesToCenter: state.isDismissing))
                 .ignoresSafeArea()
+                // Clicking off a task ends its editing and goes back to "Add a task…".
+                .onTapGesture(perform: state.focusInput)
 
             VStack(spacing: 20) {
                 input
@@ -267,8 +273,12 @@ struct TaskOverlayView: View {
             case .input: field = .input
             case .task: field = nil
             case .editing:
-                // The editor only exists after this update, so focus it on the next pass.
-                DispatchQueue.main.async { field = .editor }
+                // The editor only exists after this update, so focus it on the next pass, then
+                // put the caret at the end (a focused text field selects all by default).
+                DispatchQueue.main.async {
+                    field = .editor
+                    DispatchQueue.main.async(execute: Self.moveCaretToEnd)
+                }
             }
         }
         .onChange(of: field) { _, field in
@@ -328,40 +338,117 @@ struct TaskOverlayView: View {
     /// Runs to the bottom of the screen. Rows fade out under "Add a task…" when scrolled up,
     /// and gradually into the bottom edge.
     private var list: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(Array(store.tasks.enumerated()), id: \.element.id) { index, task in
-                        TaskRow(
-                            task: task,
-                            isSelected: state.selectedID == task.id,
-                            isEditing: state.focus == .editing(task.id),
-                            editText: $state.editText,
-                            field: $field,
-                            onToggle: { withAnimation(.spring(response: 0.3)) { store.toggle(task.id) } },
-                            onEdit: { state.beginEditing(task.id) },
-                            onDelete: { withAnimation(.spring(response: 0.3)) { store.delete(task.id) } }
-                        )
-                        .id(task.id)
-                        .opacity(isRevealed ? 1 : 0)
-                        .offset(y: isRevealed ? 0 : -14)
-                        .animation(isRevealed ? Self.cascadeIn(index) : Self.cascadeOut(index, of: store.tasks.count),
-                                   value: isRevealed)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+        GeometryReader { geometry in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(Array(store.tasks.enumerated()), id: \.element.id) { index, task in
+                            TaskRow(
+                                task: task,
+                                isSelected: state.selectedID == task.id,
+                                isEditing: state.focus == .editing(task.id),
+                                editText: $state.editText,
+                                field: $field,
+                                onToggle: { withAnimation(.spring(response: 0.3)) { store.toggle(task.id) } },
+                                onEdit: { state.beginEditing(task.id) },
+                                onDelete: { withAnimation(.spring(response: 0.3)) { store.delete(task.id) } }
+                            )
+                            .id(task.id)
+                            .background(GeometryReader { geometry in
+                                Color.clear.preference(key: RowFrames.self,
+                                                       value: [task.id: geometry.frame(in: .named(Self.listSpace))])
+                            })
+                            // Drag to reorder (not while editing, where a drag selects text).
+                            .gesture(reorderGesture(task.id), including: state.focus == .editing(task.id) ? .subviews : .all)
+                            // While dragged, the row itself rides above the list (below); its slot stays open.
+                            .opacity(drag?.id == task.id ? 0 : 1)
+                            .opacity(isRevealed ? 1 : 0)
+                            .offset(y: isRevealed ? 0 : -14)
+                            .animation(isRevealed ? Self.cascadeIn(index) : Self.cascadeOut(index, of: store.tasks.count),
+                                       value: isRevealed)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                        }
                     }
+                    // Fills the visible list, so a click in the gaps or below the last task counts as
+                    // a click off the task (the rows' own taps win over this).
+                    .frame(minHeight: geometry.size.height - Metrics.topFade - Metrics.bottomFade, alignment: .top)
+                    .background(Color.clear.contentShape(Rectangle()).onTapGesture(perform: state.focusInput))
+                    .coordinateSpace(name: Self.listSpace)
+                    .onPreferenceChange(RowFrames.self) { rowFrames = $0 }
+                    .overlay(alignment: .topLeading) { draggedRow }
                 }
-            }
-            .contentMargins(.horizontal, Metrics.shadowRoom, for: .scrollContent)
-            .contentMargins(.top, Metrics.topFade, for: .scrollContent)
-            .contentMargins(.bottom, Metrics.bottomFade, for: .scrollContent)
-            .scrollIndicators(.never)
-            .mask(fadeMask)
-            .onChange(of: state.selectedID) { _, id in
-                guard let id else { return }
-                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id) }
+                .contentMargins(.horizontal, Metrics.shadowRoom, for: .scrollContent)
+                .contentMargins(.top, Metrics.topFade, for: .scrollContent)
+                .contentMargins(.bottom, Metrics.bottomFade, for: .scrollContent)
+                .scrollIndicators(.never)
+                .mask(fadeMask)
+                .onChange(of: state.selectedID) { _, id in
+                    guard let id else { return }
+                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id) }
+                }
             }
         }
         .frame(maxHeight: .infinity)
+    }
+
+    /// The focused text field's editor, caret moved after the last character.
+    private static func moveCaretToEnd() {
+        guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView else { return }
+        editor.setSelectedRange(NSRange(location: (editor.string as NSString).length, length: 0))
+    }
+
+    // MARK: Reordering
+
+    private static let listSpace = "taskList"
+
+    /// The dragged task follows the pointer; as its center passes a neighbor's middle, the list
+    /// reorders (the neighbors slide), so the drop only has to settle it into its slot.
+    private func reorderGesture(_ id: TaskItem.ID) -> some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .named(Self.listSpace))
+            .onChanged { value in
+                if drag == nil {
+                    guard let frame = rowFrames[id] else { return }
+                    drag = TaskDrag(id: id, grab: value.startLocation.y - frame.minY, top: frame.minY)
+                }
+                guard var current = drag, current.id == id, let frame = rowFrames[id] else { return }
+                current.top = value.location.y - current.grab
+                drag = current
+                reorder(id, center: current.top + frame.height / 2)
+            }
+            .onEnded { _ in
+                guard let frame = rowFrames[id] else {
+                    drag = nil
+                    return
+                }
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) { drag?.top = frame.minY }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    if drag?.id == id { drag = nil }
+                }
+            }
+    }
+
+    private func reorder(_ id: TaskItem.ID, center: CGFloat) {
+        let ids = store.tasks.map(\.id)
+        guard let index = ids.firstIndex(of: id) else { return }
+        if index > 0, let above = rowFrames[ids[index - 1]], center < above.midY {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.move(id, to: ids[index - 1]) }
+        } else if index < ids.count - 1, let below = rowFrames[ids[index + 1]], center > below.midY {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.move(id, to: ids[index + 1]) }
+        }
+    }
+
+    /// The task being dragged, lifted above the list at the pointer.
+    @ViewBuilder
+    private var draggedRow: some View {
+        if let drag, let task = store.tasks.first(where: { $0.id == drag.id }), let frame = rowFrames[drag.id] {
+            TaskRow(task: task, isSelected: true, isEditing: false, editText: .constant(""), field: $field,
+                    onToggle: {}, onEdit: {}, onDelete: {})
+                .frame(width: frame.width)
+                .scaleEffect(1.02)
+                .shadow(color: .black.opacity(0.18), radius: 16, y: 8)
+                .offset(x: frame.minX, y: drag.top)
+                .allowsHitTesting(false)
+        }
     }
 
     private var fadeMask: some View {
@@ -441,12 +528,17 @@ private struct TaskRow: View {
             }
             .font(.system(size: isCompact ? 16 : 22))
 
+            let showsTrash = isHovering || isEditing
             Button(action: onDelete) {
-                Image(systemName: "trash").font(.system(size: 18))
+                Image(systemName: "trash.fill").font(.system(size: 18))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .opacity(isHovering || isEditing ? 1 : 0)
+            // Pops in on hover rather than blinking on.
+            .opacity(showsTrash ? 1 : 0)
+            .scaleEffect(showsTrash ? 1 : 0.6)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: showsTrash)
+            .allowsHitTesting(showsTrash)
         }
         .padding(.horizontal, 24)
         // Done tasks squeeze down so they read as packed away.
@@ -471,6 +563,22 @@ private struct TaskRow: View {
             guard !Task.isCancelled else { return }
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { isCompact = task.isDone }
         }
+    }
+}
+
+/// A task being dragged: `grab` is where the pointer holds it (from the row's top), `top` where the
+/// lifted row is drawn, both in list coordinates.
+private struct TaskDrag: Equatable {
+    let id: TaskItem.ID
+    let grab: CGFloat
+    var top: CGFloat
+}
+
+private struct RowFrames: PreferenceKey {
+    static let defaultValue: [TaskItem.ID: CGRect] = [:]
+
+    static func reduce(value: inout [TaskItem.ID: CGRect], nextValue: () -> [TaskItem.ID: CGRect]) {
+        value.merge(nextValue()) { $1 }
     }
 }
 
