@@ -3,7 +3,31 @@ import SwiftUI
 
 @MainActor
 final class CameraModel: ObservableObject {
-    enum Shape: String { case circle, portrait }
+    /// The shape button steps circle → portrait → blob, then back to circle.
+    enum Shape: String, CaseIterable {
+        case circle, portrait, blob
+
+        var next: Shape {
+            let all = Shape.allCases
+            return all[(all.firstIndex(of: self)! + 1) % all.count]
+        }
+
+        var symbol: String {
+            switch self {
+            case .circle: "circle"
+            case .portrait: "rectangle.portrait"
+            case .blob: "drop"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .circle: "Circle"
+            case .portrait: "Portrait rectangle"
+            case .blob: "Blob"
+            }
+        }
+    }
 
     /// One of the pen's shader brushes around the bubble's edge, or none.
     enum Effect: String, CaseIterable {
@@ -86,7 +110,7 @@ final class CameraModel: ObservableObject {
     var cornerRadius: CGFloat { Self.cornerRadius(shape: shape, size: size) }
 
     func stepSize() { onLayoutRequest?(shape, size.next) }
-    func toggleShape() { onLayoutRequest?(shape == .circle ? .portrait : .circle, size) }
+    func toggleShape() { onLayoutRequest?(shape.next, size) }
     func stepEffect() { effect = effect.next }
 
     /// Only the controller applies layout, so the bubble and controls animate together.
@@ -98,7 +122,7 @@ final class CameraModel: ObservableObject {
     static func contentSize(shape: Shape, size: Size) -> CGSize {
         let scale = size.scale
         switch shape {
-        case .circle: return CGSize(width: 160 * scale, height: 160 * scale)
+        case .circle, .blob: return CGSize(width: 160 * scale, height: 160 * scale)
         case .portrait: return CGSize(width: 150 * scale, height: 200 * scale)
         }
     }
@@ -106,7 +130,7 @@ final class CameraModel: ObservableObject {
     /// A circle is a rounded rectangle whose radius is half its side — which is what lets it morph.
     static func cornerRadius(shape: Shape, size: Size) -> CGFloat {
         switch shape {
-        case .circle: return contentSize(shape: shape, size: size).width / 2
+        case .circle, .blob: return contentSize(shape: shape, size: size).width / 2
         case .portrait: return 20 * (size.scale + 1) / 2 // 20, 25, 30
         }
     }
@@ -114,7 +138,7 @@ final class CameraModel: ObservableObject {
     /// The window stays this size — big enough for every bubble — and never resizes, so nothing
     /// in it gets re-laid out mid-morph. Its transparent margin lets clicks through to what's below.
     static let windowSize: CGSize = {
-        let sizes = [Shape.circle, .portrait].flatMap { shape in
+        let sizes = Shape.allCases.flatMap { shape in
             Size.allCases.map { contentSize(shape: shape, size: $0) }
         }
         return CGSize(width: sizes.map(\.width).max()! + padding * 2,
@@ -182,6 +206,7 @@ final class CameraController: DotFeature {
         withAnimation(CameraModel.morphAnimation) {
             model.apply(shape: shape, size: size)
         }
+        bubble.setBlob(shape == .blob, duration: CameraModel.morphDuration)
         bubble.setBubble(size: model.contentSize, cornerRadius: model.cornerRadius, duration: CameraModel.morphDuration) {
             Log.camera.debug("Morph finished \(Log.ms(since: requestedAt), format: .fixed(precision: 0)) ms after request (target \(CameraModel.morphDuration * 1000, format: .fixed(precision: 0)) ms)")
         }

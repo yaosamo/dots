@@ -14,7 +14,8 @@ struct CameraView: View {
         ZStack {
             BubbleHost(view: bubble)
             if let brush = model.effect.brush {
-                EffectRim(brush: brush, size: size, cornerRadius: model.cornerRadius)
+                EffectRim(brush: brush, size: size, cornerRadius: model.cornerRadius,
+                          blob: model.shape == .blob ? 1 : 0)
                     .transition(.opacity)
             }
 
@@ -27,7 +28,7 @@ struct CameraView: View {
                 Spacer()
                 if isHovering {
                     controls
-                        .padding(.bottom, model.shape == .circle ? size.height * 0.12 : 12)
+                        .padding(.bottom, model.shape == .portrait ? 12 : size.height * 0.12)
                         .transition(.opacity)
                 }
             }
@@ -62,8 +63,8 @@ struct CameraView: View {
                 action: model.stepSize
             )
             ControlButton(
-                symbol: model.shape == .circle ? "rectangle.portrait" : "circle",
-                help: model.shape == .circle ? "Portrait rectangle" : "Circle",
+                symbol: model.shape.next.symbol,
+                help: model.shape.next.title,
                 action: model.toggleShape
             )
             ControlButton(symbol: model.effect.symbol, help: model.effect.help) {
@@ -115,6 +116,8 @@ private struct EffectRim: View {
     let brush: Brush
     let size: CGSize
     let cornerRadius: CGFloat
+    /// 0…1 into the blob; animates with the morph.
+    let blob: CGFloat
 
     @ObservedObject private var tuning = ShaderTuning.shared
     @State private var start = Date()
@@ -125,7 +128,7 @@ private struct EffectRim: View {
         values.rainbowScale *= 3
         let margin = brush.layerMargin(values)
         return TimelineView(.animation) { timeline in
-            RoundedRectangle(cornerRadius: cornerRadius, style: .circular)
+            RimShape(cornerRadius: cornerRadius, blob: blob, time: BlobOutline.now)
                 .stroke(brush.inkColor, lineWidth: brush.lineWidth)
                 .frame(width: size.width, height: size.height)
                 .padding(.horizontal, margin.width)
@@ -137,6 +140,25 @@ private struct EffectRim: View {
     }
 }
 
+/// The bubble's outline for the rim: its rounded rectangle, or the blob (the same one the video is
+/// masked to), with the radius and the blob's amount animating on the morph.
+private struct RimShape: Shape {
+    var cornerRadius: CGFloat
+    var blob: CGFloat
+    let time: TimeInterval
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(cornerRadius, blob) }
+        set { (cornerRadius, blob) = (newValue.first, newValue.second) }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        guard blob > 0.001 else { return Path(roundedRect: rect, cornerRadius: cornerRadius, style: .circular) }
+        let outline = BlobOutline.path(size: rect.size, cornerRadius: cornerRadius, amount: blob, time: time, flipped: true)
+        return Path(outline).offsetBy(dx: rect.minX, dy: rect.minY)
+    }
+}
+
 private struct BubbleHost: NSViewRepresentable {
     let view: CameraBubbleView
 
@@ -144,10 +166,19 @@ private struct BubbleHost: NSViewRepresentable {
     func updateNSView(_ nsView: CameraBubbleView, context: Context) {}
 }
 
-/// Mirrored live preview clipped to a rounded rect, centered in the view. Dragging it moves the window.
+/// Mirrored live preview clipped to a rounded rect, or a wobbling blob, centered in the view.
+/// Dragging it moves the window.
 final class CameraBubbleView: NSView {
     private let shadowLayer = CALayer()
     private let clipLayer = CALayer()
+    /// The blob (BlobOutline): the video's mask and its hairline, redrawn every frame while it's on.
+    private let blobMask = CAShapeLayer()
+    private let blobOutline = CAShapeLayer()
+    private var blobLink: CADisplayLink?
+    private var blobFrom: CGFloat = 0
+    private var blobTo: CGFloat = 0
+    private var blobStart: TimeInterval = 0
+    private var blobDuration: TimeInterval = 0
     private let previewLayer: AVCaptureVideoPreviewLayer
     private var startObserver: NSObjectProtocol?
     /// Off for previews embedded in another window (Welcome), which shouldn't move with the bubble.
@@ -174,6 +205,12 @@ final class CameraBubbleView: NSView {
         clipLayer.addSublayer(previewLayer)
         layer?.addSublayer(shadowLayer)
         layer?.addSublayer(clipLayer)
+
+        blobOutline.fillColor = nil
+        blobOutline.strokeColor = NSColor.white.withAlphaComponent(0.25).cgColor
+        blobOutline.lineWidth = 1
+        blobOutline.isHidden = true
+        layer?.addSublayer(blobOutline)
 
         startObserver = NotificationCenter.default.addObserver(
             forName: AVCaptureSession.didStartRunningNotification, object: session, queue: .main
@@ -207,6 +244,63 @@ final class CameraBubbleView: NSView {
         CATransaction.commit()
     }
 
+    /// Grows the wobble in (or smooths it away) on the morph's curve, alongside `setBubble`.
+    func setBlob(_ isOn: Bool, duration: TimeInterval) {
+        blobFrom = currentBlobAmount
+        blobTo = isOn ? 1 : 0
+        blobStart = CACurrentMediaTime()
+        blobDuration = duration
+        if blobLink == nil, blobFrom > 0 || blobTo > 0 {
+            let link = displayLink(target: self, selector: #selector(stepBlob))
+            link.add(to: .main, forMode: .common)
+            blobLink = link
+        }
+        stepBlob()
+    }
+
+    private var currentBlobAmount: CGFloat {
+        guard blobDuration > 0 else { return blobTo }
+        let progress = (CACurrentMediaTime() - blobStart) / blobDuration
+        let eased = BlobOutline.ease(progress, curve: CameraModel.morphCurve)
+        return blobFrom + (blobTo - blobFrom) * CGFloat(eased)
+    }
+
+    /// Redraws the blob from where the bubble's morph is right now, so the two move as one.
+    @objc private func stepBlob() {
+        // Hidden camera: nothing to draw (the link stays, so it picks up again when shown).
+        if window?.isVisible == false, blobTo > 0 { return }
+        let amount = currentBlobAmount
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        guard amount > 0.001 || blobTo > 0 else {
+            // Back to the plain rounded rectangle.
+            clipLayer.mask = nil
+            clipLayer.borderWidth = 1
+            shadowLayer.shadowPath = nil
+            shadowLayer.backgroundColor = NSColor.black.cgColor
+            blobOutline.isHidden = true
+            blobLink?.invalidate()
+            blobLink = nil
+            return
+        }
+        let current = clipLayer.presentation() ?? clipLayer
+        let bounds = CGRect(origin: .zero, size: current.bounds.size)
+        let path = BlobOutline.path(size: bounds.size, cornerRadius: current.cornerRadius, amount: amount,
+                                    time: BlobOutline.now)
+        blobMask.frame = bounds
+        blobMask.path = path
+        clipLayer.mask = blobMask
+        clipLayer.borderWidth = 0
+        // The shadow takes the blob's shape; its black fill would show past the wobble.
+        shadowLayer.backgroundColor = nil
+        shadowLayer.shadowPath = path
+        blobOutline.bounds = bounds
+        blobOutline.position = clipLayer.position
+        blobOutline.path = path
+        blobOutline.isHidden = false
+    }
+
     override func layout() {
         super.layout()
         // Keep the bubble centered in the (fixed-size) window, without animating.
@@ -215,6 +309,7 @@ final class CameraBubbleView: NSView {
         let center = CGPoint(x: bounds.midX, y: bounds.midY)
         shadowLayer.position = center
         clipLayer.position = center
+        blobOutline.position = center
         CATransaction.commit()
     }
 
