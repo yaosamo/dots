@@ -13,6 +13,10 @@ struct CameraView: View {
 
         ZStack {
             BubbleHost(view: bubble)
+            if model.isShown, model.effect == .cloud {
+                CloudRim(size: size)
+                    .transition(.opacity)
+            }
             if model.isShown, let brush = model.effect.brush {
                 EffectRim(brush: brush, size: size, cornerRadius: model.cornerRadius,
                           blob: model.shape == .blob ? 1 : 0)
@@ -148,6 +152,34 @@ private struct EffectRim: View {
                 ring.brushEffect(brush, time: time, origin: .zero, tuning: values)
             }
         }
+        .allowsHitTesting(false)
+    }
+}
+
+/// The camera sitting in a cloud (CameraShaders.metal): a fluffy bank across the bubble's lower part,
+/// spilling out past its sides and bottom into the window's margin. Sized from the bubble, so it
+/// follows the morphs.
+private struct CloudRim: View {
+    let size: CGSize
+
+    @State private var start = Date()
+
+    var body: some View {
+        // Room for the outer puffs, within the window's margin.
+        let side = min(size.width * 0.28, CameraModel.padding)
+        let below = min(size.height * 0.24, 48)
+        let layer = CGSize(width: size.width + side * 2, height: size.height * 0.62 + below)
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { timeline in
+            Rectangle()
+                .fill(.white)
+                .colorEffect(ShaderLibrary.cameraCloud(
+                    .float2(layer), .float2(size), .float(Float(side)), .float(Float(below)),
+                    .float(Float(timeline.date.timeIntervalSince(start)))
+                ))
+        }
+        .frame(width: layer.width, height: layer.height)
+        // Bottom-aligned with the bubble's bottom, plus the spill below it.
+        .offset(y: size.height / 2 + below - layer.height / 2)
         .allowsHitTesting(false)
     }
 }

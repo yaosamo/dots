@@ -31,7 +31,7 @@ final class CameraModel: ObservableObject {
 
     /// One of the pen's shader brushes around the bubble's edge, or none.
     enum Effect: String, CaseIterable {
-        case none, electric, fire, rainbow
+        case none, electric, fire, rainbow, cloud
 
         var brush: Brush? {
             switch self {
@@ -39,6 +39,7 @@ final class CameraModel: ObservableObject {
             case .electric: .electric
             case .fire: .fire
             case .rainbow: .rainbow
+            case .cloud: nil
             }
         }
 
@@ -48,6 +49,7 @@ final class CameraModel: ObservableObject {
             case .electric: "bolt.fill"
             case .fire: "flame.fill"
             case .rainbow: "rainbow"
+            case .cloud: "cloud.fill"
             }
         }
 
@@ -57,6 +59,7 @@ final class CameraModel: ObservableObject {
             case .electric: "Effect: electric"
             case .fire: "Effect: fire"
             case .rainbow: "Effect: rainbow"
+            case .cloud: "Effect: cloud"
             }
         }
 
