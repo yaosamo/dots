@@ -11,8 +11,13 @@ final class CameraSession {
     private let frames: AVCaptureVideoDataOutput = {
         let output = AVCaptureVideoDataOutput()
         output.alwaysDiscardsLateVideoFrames = true
-        // The camera's own format, so frames aren't converted.
-        output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+        // The camera's own format, so frames aren't converted, and small: tracking a head or hand
+        // needs no more, the camera scales them for free, and Vision has a quarter of 720p to look at.
+        output.videoSettings = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+            kCVPixelBufferWidthKey as String: 640,
+            kCVPixelBufferHeightKey as String: 360,
+        ]
         return output
     }()
     private let framesQueue = DispatchQueue(label: "app.dots.camera.frames", qos: .userInitiated)

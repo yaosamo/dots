@@ -6,7 +6,7 @@ import Vision
 /// grow toward it. Runs on the session's frames queue, at most `rate` times a second, and only while
 /// it's the frames output's delegate (see CameraController: the blob, while the camera is open).
 final class HeadTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
-    private static let rate: Double = 20
+    private static let rate: Double = 15
 
     /// A hand's center if one's up, else the biggest face's, 0…1 across and up the unmirrored frame
     /// (Vision's coordinates), or nil when there's neither; and the frame's size in pixels. Called on
@@ -19,6 +19,9 @@ final class HeadTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate,
         return request
     }()
     private var lastRun: CFTimeInterval = 0
+    /// Hands are looked for every other run (the heavier request); in between, the last one stands.
+    private var runs = 0
+    private var lastHand: CGPoint?
 
     init(onTarget: @escaping (CGPoint?, CGSize) -> Void) {
         self.onTarget = onTarget
@@ -30,10 +33,14 @@ final class HeadTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate,
         guard now - lastRun >= 1 / Self.rate, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         lastRun = now
         let size = CGSize(width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer))
-        try? VNImageRequestHandler(cvPixelBuffer: buffer, orientation: .up).perform([faces, hands])
+        runs += 1
+        let looksForHands = runs % 2 == 0
+        try? VNImageRequestHandler(cvPixelBuffer: buffer, orientation: .up)
+            .perform(looksForHands ? [faces, hands] : [faces])
+        if looksForHands { lastHand = Self.handCenter(hands.results?.first) }
         let face = faces.results?.max { $0.boundingBox.width < $1.boundingBox.width }
             .map { CGPoint(x: $0.boundingBox.midX, y: $0.boundingBox.midY) }
-        onTarget(Self.handCenter(hands.results?.first) ?? face, size)
+        onTarget(lastHand ?? face, size)
     }
 
     /// The middle of the hand's confidently seen joints; nil unless enough of it is seen.
