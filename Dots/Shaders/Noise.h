@@ -28,3 +28,15 @@ static inline float fbm(float2 p, int octaves = 4) {
     }
     return value;
 }
+
+/// Billowy fractal noise: each octave folded (1 - |2n - 1|), for puffy, cauliflower edges.
+static inline float billow(float2 p, int octaves = 3) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    for (int i = 0; i < octaves; i++) {
+        value += amplitude * (1.0 - abs(noise(p) * 2.0 - 1.0));
+        p *= 2.03;
+        amplitude *= 0.5;
+    }
+    return value;
+}

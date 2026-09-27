@@ -21,10 +21,11 @@ final class WelcomeTuning: ObservableObject {
         }
     }
 
-    /// What's behind the dots: the storm that blooms open, or Onlook's flow with ink that trails
-    /// the pointer (Onboarding/FlowBackground.swift).
+    /// What's behind the dots: the storm that blooms open, Onlook's flow with ink that trails
+    /// the pointer (Onboarding/FlowBackground.swift), or clouds that come down over the screen
+    /// (Shaders/CloudShader.metal).
     enum Background: Int, CaseIterable, Identifiable {
-        case storm, flow
+        case storm, flow, clouds
 
         var id: Int { rawValue }
 
@@ -32,13 +33,14 @@ final class WelcomeTuning: ObservableObject {
             switch self {
             case .storm: "Storm"
             case .flow: "Flow"
+            case .clouds: "Clouds"
             }
         }
     }
 
     struct Values: Codable, Equatable {
         /// A `Background` raw value (kept as a number so it copies and saves like the rest).
-        var background: Double = 1
+        var background: Double = 2
         // Timing, in seconds
         var fadeIn: Double = 1.4
         /// From opening until the bloom bursts; the storm gathers and darkens meanwhile.
@@ -53,6 +55,24 @@ final class WelcomeTuning: ObservableObject {
         var textDelay: Double = 0.7
         /// After the text, before the hint and Done.
         var hintDelay: Double = 0.8
+        // Clouds (Shaders/CloudShader.metal)
+        /// From opening until the clouds have come down; the first dot follows after `dotsDelay`.
+        var cloudDescend: Double = 2.8
+        /// Once Done lands the dots, the clouds lift away over this.
+        var cloudLeave: Double = 0.6
+        /// Higher is smaller clouds.
+        var cloudSize: Double = 1.6
+        /// Higher is more see-through gaps.
+        var cloudHoles: Double = 0.46
+        var cloudSoftness: Double = 0.28
+        /// How far the layers fall, apart from each other: the depth.
+        var cloudDepth: Double = 0.6
+        /// How far down the bank comes, in screen heights.
+        var cloudReach: Double = 1.05
+        var cloudEdgeFog: Double = 0.8
+        var cloudDrift: Double = 0.012
+        /// Faint white behind the dots and text, so the text reads over a dark desktop.
+        var cloudVeil: Double = 0.25
         // Storm (Shaders/WelcomeShader.metal)
         var cloudScale: Double = 2.6
         /// Lower is cloudier.
@@ -103,7 +123,7 @@ final class WelcomeTuning: ObservableObject {
     }
 
     var background: Background {
-        get { Background(rawValue: Int(values.background.rounded())) ?? .flow }
+        get { Background(rawValue: Int(values.background.rounded())) ?? .clouds }
         set { values.background = Double(newValue.rawValue) }
     }
 
@@ -163,6 +183,18 @@ struct WelcomeSection: Identifiable {
             WelcomeParameter(title: "Dot emerges over", keyPath: \.dotEmerge, range: 0.1...3, unit: "s"),
             WelcomeParameter(title: "Text after last dot", keyPath: \.textDelay, range: 0...3, unit: "s"),
             WelcomeParameter(title: "Hint and Done after text", keyPath: \.hintDelay, range: 0...3, unit: "s"),
+        ]),
+        WelcomeSection(title: "Clouds", parameters: [
+            WelcomeParameter(title: "Come down over", keyPath: \.cloudDescend, range: 0.5...8, unit: "s"),
+            WelcomeParameter(title: "Lift away over", keyPath: \.cloudLeave, range: 0.1...2, unit: "s"),
+            WelcomeParameter(title: "Cloud size", keyPath: \.cloudSize, range: 0.3...5),
+            WelcomeParameter(title: "Gaps", keyPath: \.cloudHoles, range: 0.2...0.8),
+            WelcomeParameter(title: "Edge softness", keyPath: \.cloudSoftness, range: 0.02...0.6),
+            WelcomeParameter(title: "Depth", keyPath: \.cloudDepth, range: 0...2),
+            WelcomeParameter(title: "Reach", keyPath: \.cloudReach, range: 0.3...1.4),
+            WelcomeParameter(title: "Edge fog", keyPath: \.cloudEdgeFog, range: 0...2),
+            WelcomeParameter(title: "Drift speed", keyPath: \.cloudDrift, range: 0...0.1),
+            WelcomeParameter(title: "Veil behind text", keyPath: \.cloudVeil, range: 0...1),
         ]),
         WelcomeSection(title: "Storm", parameters: [
             WelcomeParameter(title: "Cloud size", keyPath: \.cloudScale, range: 0.5...8),

@@ -1,9 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// The first-launch welcome: the dots emerge one by one above a line of text, over Onlook's flow
-/// (dark, with ink that trails the pointer) or a storm that gathers darker and darker until a bloom
-/// sweeps it away. Clicking a dot previews its tool; Done flies the chosen dots up into the bar.
+/// The first-launch welcome: the dots emerge one by one above a line of text, under clouds that
+/// come down over the screen, over Onlook's flow (dark, with ink that trails the pointer), or after
+/// a storm that gathers darker and darker until a bloom sweeps it away. Clicking a dot previews its tool; Done flies the chosen dots up into the bar.
 /// Every timing, effect, size and word comes from `WelcomeTuning` (Welcome Lab in the menu bar menu).
 @MainActor
 final class WelcomeState: ObservableObject {
@@ -30,7 +30,11 @@ final class WelcomeState: ObservableObject {
     func start() {
         let tuning = WelcomeTuning.shared.values
         // The flow has no bloom to wait for: the dots follow its fade in.
-        let opening = WelcomeTuning.shared.background == .flow ? tuning.fadeIn : tuning.gather
+        let opening = switch WelcomeTuning.shared.background {
+        case .storm: tuning.gather
+        case .flow: tuning.fadeIn
+        case .clouds: tuning.cloudDescend
+        }
         let first = opening + tuning.dotsDelay
         for index in Dot.allCases.indices {
             after(first + Double(index) * tuning.dotBeat) { self.shownDots = index + 1 }
@@ -66,6 +70,27 @@ final class WelcomeState: ObservableObject {
 
     private func after(_ delay: TimeInterval, _ action: @escaping () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action)
+    }
+}
+
+/// The clouds' script, from the seconds since the welcome opened (and since they started leaving),
+/// handed to the `welcomeClouds` shader.
+private struct CloudFrame {
+    var time: Double
+    var descend: Double
+    var leave: Double = 0
+    var fade: Double
+
+    init(time: TimeInterval, leaving: TimeInterval?, tuning: WelcomeTuning.Values) {
+        func easeOut(_ x: Double) -> Double { 1 - pow(1 - min(max(x, 0), 1), 3) }
+        func easeIn(_ x: Double) -> Double { pow(min(max(x, 0), 1), 2) }
+        self.time = time
+        descend = easeOut(time / tuning.cloudDescend)
+        fade = min(time / 0.4, 1)
+        if let leaving {
+            leave = easeIn(leaving / tuning.cloudLeave)
+            fade *= 1 - easeIn(leaving / tuning.cloudLeave)
+        }
     }
 }
 
@@ -156,6 +181,7 @@ struct WelcomeView: View {
                 switch tuning.background {
                 case .storm: storm(size: size)
                 case .flow: flow
+                case .clouds: clouds(size: size)
                 }
                 caption(below: center)
                 preview(above: center)
@@ -186,6 +212,24 @@ struct WelcomeView: View {
                     .float(seed), number(values.cloudScale), number(values.cloudCover), number(values.swirl),
                     number(values.drift), number(values.darknessSoftness), number(values.darkest),
                     number(values.lightning), number(values.bloomRim), number(values.bloomPop)
+                ))
+        }
+    }
+
+    private func clouds(size: CGSize) -> some View {
+        TimelineView(.animation) { timeline in
+            let values = tuning.values
+            let frame = CloudFrame(time: timeline.date.timeIntervalSince(state.startDate),
+                                   leaving: state.leftAt.map { timeline.date.timeIntervalSince($0) },
+                                   tuning: values)
+            let number: (Double) -> Shader.Argument = { .float(Float($0)) }
+            Rectangle()
+                .fill(.white)
+                .colorEffect(ShaderLibrary.welcomeClouds(
+                    .float2(size), number(frame.time), number(frame.descend), number(frame.leave),
+                    number(frame.fade), .float(seed), number(values.cloudSize), number(values.cloudHoles),
+                    number(values.cloudSoftness), number(values.cloudDepth), number(values.cloudReach),
+                    number(values.cloudEdgeFog), number(values.cloudDrift), number(values.cloudVeil)
                 ))
         }
     }
