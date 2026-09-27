@@ -134,14 +134,20 @@ final class DotsCoordinator: ObservableObject {
         case .camera:
             camera?.toggle()
         case .tasks:
-            // Tasks and pen both cover the screen; only one at a time.
+            // Tasks, pen and the clipboard all cover the screen; only one at a time.
             pen?.hide()
+            clipboard?.hide()
             tasks?.toggle()
         case .pen:
             tasks?.hide()
+            clipboard?.hide()
             pen?.toggle()
-        case .timer, .clipboard:
-            feature(for: dot)?.toggle()
+        case .clipboard:
+            tasks?.hide()
+            pen?.hide()
+            clipboard?.toggle()
+        case .timer:
+            timer?.toggle()
         }
     }
 
