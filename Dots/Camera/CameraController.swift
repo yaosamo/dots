@@ -5,6 +5,43 @@ import SwiftUI
 final class CameraModel: ObservableObject {
     enum Shape: String { case circle, portrait }
 
+    /// One of the pen's shader brushes around the bubble's edge, or none.
+    enum Effect: String, CaseIterable {
+        case none, electric, fire, rainbow
+
+        var brush: Brush? {
+            switch self {
+            case .none: nil
+            case .electric: .electric
+            case .fire: .fire
+            case .rainbow: .rainbow
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .none: "sparkles"
+            case .electric: "bolt.fill"
+            case .fire: "flame.fill"
+            case .rainbow: "rainbow"
+            }
+        }
+
+        var help: String {
+            switch self {
+            case .none: "Effect: none"
+            case .electric: "Effect: electric"
+            case .fire: "Effect: fire"
+            case .rainbow: "Effect: rainbow"
+            }
+        }
+
+        var next: Effect {
+            let all = Effect.allCases
+            return all[(all.firstIndex(of: self)! + 1) % all.count]
+        }
+    }
+
     /// The expand button steps small → medium → large, then back to small.
     enum Size: String, CaseIterable {
         case small, medium, large
@@ -23,7 +60,9 @@ final class CameraModel: ObservableObject {
         }
     }
 
-    static let padding: CGFloat = 12
+    /// Room around the biggest bubble for its effect's glow and flames.
+    static let padding: CGFloat = 36
+    private static let effectKey = "camera.effect"
 
     /// Shared by the Core Animation bubble and the SwiftUI controls so they move as one.
     static let morphDuration: TimeInterval = 0.3
@@ -35,6 +74,9 @@ final class CameraModel: ObservableObject {
     @Published private(set) var shape: Shape = .circle
     @Published private(set) var size: Size = .small
     @Published var isDenied = false
+    @Published private(set) var effect = Effect(rawValue: UserDefaults.standard.string(forKey: effectKey) ?? "") ?? .none {
+        didSet { UserDefaults.standard.set(effect.rawValue, forKey: Self.effectKey) }
+    }
 
     let session = CameraSession()
     var onClose: (() -> Void)?
@@ -45,6 +87,7 @@ final class CameraModel: ObservableObject {
 
     func stepSize() { onLayoutRequest?(shape, size.next) }
     func toggleShape() { onLayoutRequest?(shape == .circle ? .portrait : .circle, size) }
+    func stepEffect() { effect = effect.next }
 
     /// Only the controller applies layout, so the bubble and controls animate together.
     fileprivate func apply(shape: Shape, size: Size) {

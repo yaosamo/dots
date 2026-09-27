@@ -13,6 +13,10 @@ struct CameraView: View {
 
         ZStack {
             BubbleHost(view: bubble)
+            if let brush = model.effect.brush {
+                EffectRim(brush: brush, size: size, cornerRadius: model.cornerRadius)
+                    .transition(.opacity)
+            }
 
             // Sized like the bubble; Spacer and the message don't take clicks, so drags reach the bubble.
             VStack {
@@ -62,6 +66,9 @@ struct CameraView: View {
                 help: model.shape == .circle ? "Portrait rectangle" : "Circle",
                 action: model.toggleShape
             )
+            ControlButton(symbol: model.effect.symbol, help: model.effect.help) {
+                withAnimation(.easeOut(duration: 0.2)) { model.stepEffect() }
+            }
             ControlButton(symbol: "xmark", help: "Close") { model.onClose?() }
         }
         .padding(3)
@@ -98,6 +105,35 @@ private struct ControlButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(.white)
         .help(help)
+    }
+}
+
+/// The pen's shader brush (PenShaders.metal) drawn as a ring on the bubble's edge: a white stroke
+/// the shader turns into light, with room around it for the glow and flames. Its size and radius
+/// come from the model, so it morphs with the bubble on the same curve.
+private struct EffectRim: View {
+    let brush: Brush
+    let size: CGSize
+    let cornerRadius: CGFloat
+
+    @ObservedObject private var tuning = ShaderTuning.shared
+    @State private var start = Date()
+
+    var body: some View {
+        var values = tuning.values
+        // The pen's rainbow spans the screen; around a bubble it's tighter, so every hue shows.
+        values.rainbowScale *= 3
+        let margin = brush.layerMargin(values)
+        return TimelineView(.animation) { timeline in
+            RoundedRectangle(cornerRadius: cornerRadius, style: .circular)
+                .stroke(brush.inkColor, lineWidth: brush.lineWidth)
+                .frame(width: size.width, height: size.height)
+                .padding(.horizontal, margin.width)
+                .padding(.vertical, margin.height)
+                .brushEffect(brush, time: Float(timeline.date.timeIntervalSince(start)), origin: .zero,
+                             tuning: values)
+        }
+        .allowsHitTesting(false)
     }
 }
 
