@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Merged into the generated Info.plist (the rest comes from INFOPLIST_KEY_ build settings).
+	     Hand-gesture Reactions (balloons, confetti…) are off by default for Dots: their detection runs
+	     on every camera frame inside the app. People can still turn them on in Control Center. -->
+	<key>NSCameraReactionEffectGesturesEnabledDefault</key>
+	<false/>
+</dict>
+</plist>

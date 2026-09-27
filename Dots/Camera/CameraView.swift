@@ -256,6 +256,9 @@ final class CameraBubbleView: NSView {
             layer.bounds = bounds
             layer.cornerRadius = cornerRadius
         }
+        // An explicit shadow shape (animating along): without one, Core Animation works it out from
+        // the pixels, offscreen, every time the window redraws, which with live video is every frame.
+        if clipLayer.mask == nil { shadowLayer.shadowPath = Self.roundedPath(bounds, cornerRadius) }
         previewLayer.frame = bounds
         CATransaction.commit()
     }
@@ -301,7 +304,7 @@ final class CameraBubbleView: NSView {
             clipLayer.masksToBounds = true
             previewLayer.frame = clipLayer.bounds
             clipLayer.borderWidth = 1
-            shadowLayer.shadowPath = nil
+            shadowLayer.shadowPath = Self.roundedPath(clipLayer.bounds, clipLayer.cornerRadius)
             shadowLayer.backgroundColor = NSColor.black.cgColor
             blobOutline.isHidden = true
             blobLink?.invalidate()
@@ -365,6 +368,11 @@ final class CameraBubbleView: NSView {
         clipLayer.position = center
         blobOutline.position = center
         CATransaction.commit()
+    }
+
+    private static func roundedPath(_ rect: CGRect, _ radius: CGFloat) -> CGPath {
+        let radius = min(radius, rect.width / 2, rect.height / 2)
+        return CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
