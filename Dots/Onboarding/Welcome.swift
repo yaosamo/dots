@@ -30,12 +30,12 @@ final class WelcomeState: ObservableObject {
     func start() {
         let tuning = WelcomeTuning.shared.values
         // The flow has no bloom to wait for: the dots follow its fade in.
-        let opening = switch WelcomeTuning.shared.background {
-        case .storm: tuning.gather
-        case .flow: tuning.fadeIn
-        case .clouds: tuning.cloudDescend
+        // The clouds don't have to finish coming down: the dots start partway through.
+        let first = switch WelcomeTuning.shared.background {
+        case .storm: tuning.gather + tuning.dotsDelay
+        case .flow: tuning.fadeIn + tuning.dotsDelay
+        case .clouds: tuning.cloudDescend * tuning.cloudDotsAt
         }
-        let first = opening + tuning.dotsDelay
         for index in Dot.allCases.indices {
             after(first + Double(index) * tuning.dotBeat) { self.shownDots = index + 1 }
         }
@@ -53,20 +53,24 @@ final class WelcomeState: ObservableObject {
         if selection.contains(dot) { selection.remove(dot) } else { selection.insert(dot) }
     }
 
-    /// Flies the chosen dots to the bar, hands over to the real bar as they land, then blows the
-    /// clouds away.
+    /// Flies the chosen dots to the bar and shows the real bar under them as they land. The clouds
+    /// lift away as the dots fly; the storm and flow clear once they've landed.
     func finish(onReveal: @escaping (Set<Dot>) -> Void, completion: @escaping () -> Void) {
         guard !isFinishing, !selection.isEmpty else { return }
         isFinishing = true
         withAnimation(.easeIn(duration: 0.15)) { previewed = nil }
         camera.stop()
         phase = .bar
-        after(0.75) {
+        let landing: TimeInterval = 0.75
+        let isClouds = WelcomeTuning.shared.background == .clouds
+        if isClouds { leftAt = Date() }
+        after(landing) {
             onReveal(self.selection)
-            self.leftAt = Date()
+            if !isClouds { self.leftAt = Date() }
         }
-        // Once the clouds have lifted away (the other backgrounds are gone by then too).
-        after(0.8 + WelcomeTuning.shared.values.cloudLeave, completion)
+        // Once the dots have landed and the clouds have lifted (the others take 0.6 s to clear).
+        let cleared = isClouds ? WelcomeTuning.shared.values.cloudLeave : landing + 0.6
+        after(max(landing, cleared) + 0.05, completion)
     }
 
     private func after(_ delay: TimeInterval, _ action: @escaping () -> Void) {

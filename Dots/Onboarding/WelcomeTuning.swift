@@ -58,6 +58,8 @@ final class WelcomeTuning: ObservableObject {
         // Clouds (Shaders/CloudShader.metal)
         /// From opening until the clouds have come down; the first dot follows after `dotsDelay`.
         var cloudDescend: Double = 1.636
+        /// When the first dot comes, as a share of the clouds' coming down.
+        var cloudDotsAt: Double = 0.5
         /// Once Done lands the dots, the clouds lift away over this.
         var cloudLeave: Double = 0.6
         /// Higher is smaller clouds.
@@ -191,7 +193,7 @@ struct WelcomeSection: Identifiable {
             WelcomeParameter(title: "Storm gathers for", keyPath: \.gather, range: 1...12, unit: "s"),
             WelcomeParameter(title: "Bloom sweep", keyPath: \.bloom, range: 0.2...4, unit: "s"),
             WelcomeParameter(title: "Clouds blow apart", keyPath: \.burst, range: 0.2...4, unit: "s"),
-            WelcomeParameter(title: "First dot after bloom", keyPath: \.dotsDelay, range: 0...3, unit: "s"),
+            WelcomeParameter(title: "First dot after bloom (storm, flow)", keyPath: \.dotsDelay, range: 0...3, unit: "s"),
             WelcomeParameter(title: "Between dots", keyPath: \.dotBeat, range: 0...1.5, unit: "s"),
             WelcomeParameter(title: "Dot emerges over", keyPath: \.dotEmerge, range: 0.1...3, unit: "s"),
             WelcomeParameter(title: "Text after last dot", keyPath: \.textDelay, range: 0...3, unit: "s"),
@@ -199,6 +201,7 @@ struct WelcomeSection: Identifiable {
         ]),
         WelcomeSection(title: "Clouds", parameters: [
             WelcomeParameter(title: "Come down over", keyPath: \.cloudDescend, range: 0.5...8, unit: "s"),
+            WelcomeParameter(title: "First dot at (share of come down)", keyPath: \.cloudDotsAt, range: 0...1.5),
             WelcomeParameter(title: "Lift away over", keyPath: \.cloudLeave, range: 0.1...2, unit: "s"),
             WelcomeParameter(title: "Cloud size", keyPath: \.cloudSize, range: 0.3...5),
             WelcomeParameter(title: "Gaps", keyPath: \.cloudHoles, range: 0.2...0.8),
