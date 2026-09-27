@@ -95,12 +95,13 @@ final class SetupState: ObservableObject {
         isFinishing = true
         if !apply { selection = original }
         phase = .bar
-        let landing: TimeInterval = 0.75
+        let landing = BarFlight.landing
         let values = WelcomeTuning.shared.values
         // The clouds lift with the cards and dots, just behind them.
         after(values.cloudSetupLeaveDelay) { self.leftAt = Date() }
+        // The real bar comes in right under the dots once they've all landed.
         after(landing) { onReveal(self.selection) }
-        after(max(landing, values.cloudSetupLeaveDelay + values.cloudLeave) + 0.05, completion)
+        after(max(landing + 0.1, values.cloudSetupLeaveDelay + values.cloudLeave) + 0.05, completion)
     }
 
     private func after(_ delay: TimeInterval, _ action: @escaping () -> Void) {
@@ -252,7 +253,10 @@ struct SetupView: View {
             .scaleEffect(placement.scale)
             .opacity(placement.opacity)
             .animation(.easeOut(duration: 0.2), value: state.selection)
-            .animation(.spring(response: 0.65, dampingFraction: 0.82).delay(Double(index) * 0.05), value: state.phase)
+            // Down to the cards on a spring; up into the bar on the fixed flight, to land exactly.
+            .animation(state.phase == .bar ? BarFlight.animation(index: index)
+                                           : .spring(response: 0.65, dampingFraction: 0.82).delay(Double(index) * 0.05),
+                       value: state.phase)
             .position(placement.center)
             .allowsHitTesting(false)
     }

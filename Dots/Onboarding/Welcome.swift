@@ -61,16 +61,17 @@ final class WelcomeState: ObservableObject {
         withAnimation(.easeIn(duration: 0.15)) { previewed = nil }
         camera.stop()
         phase = .bar
-        let landing: TimeInterval = 0.75
+        let landing = BarFlight.landing
         let isClouds = WelcomeTuning.shared.background == .clouds
         if isClouds { leftAt = Date() }
+        // The real bar comes in right under the dots once they've all landed.
         after(landing) {
             onReveal(self.selection)
             if !isClouds { self.leftAt = Date() }
         }
-        // Once the dots have landed and the clouds have lifted (the others take 0.6 s to clear).
+        // Once the bar is there under them and the clouds have lifted (the others take 0.6 s).
         let cleared = isClouds ? WelcomeTuning.shared.values.cloudLeave : landing + 0.6
-        after(max(landing, cleared) + 0.05, completion)
+        after(max(landing + 0.1, cleared) + 0.05, completion)
     }
 
     private func after(_ delay: TimeInterval, _ action: @escaping () -> Void) {
@@ -332,7 +333,7 @@ struct WelcomeView: View {
         .opacity(placement.opacity)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPreviewed)
         .animation(.easeOut(duration: 0.2), value: state.selection)
-        .animation(.spring(response: 0.65, dampingFraction: 0.82).delay(Double(index) * 0.05), value: state.phase)
+        .animation(BarFlight.animation(index: index), value: state.phase)
         // Emerging: out of focus and faint to crisp, in its own place.
         .animation(.easeOut(duration: tuning.values.dotEmerge), value: state.shownDots)
         .position(placement.center)
