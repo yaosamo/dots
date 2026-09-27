@@ -127,7 +127,7 @@ struct ClipboardOverlayView: View {
                     } else {
                         cards(cardWidth: cardWidth(in: geometry.size.width))
                     }
-                    Text("Click a card or press 1–\(max(history.items.count, 1)) to copy it again · Esc to close")
+                    Text("Click to copy, Esc to close")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                         .opacity(isRevealed && !history.items.isEmpty ? 1 : 0)
@@ -157,7 +157,7 @@ struct ClipboardOverlayView: View {
     private func cards(cardWidth: CGFloat) -> some View {
         HStack(spacing: Self.spacing) {
             ForEach(Array(history.items.enumerated()), id: \.element.id) { index, item in
-                ClipCard(item: item, number: index + 1, isDark: isDark,
+                ClipCard(item: item, isDark: isDark,
                          onPick: { onPick(item) },
                          onDelete: { withAnimation(Self.removal) { history.delete(item) } },
                          onHover: { isOver in
@@ -194,10 +194,9 @@ struct ClipboardOverlayView: View {
     }
 }
 
-/// One copy: its text or image, its number (1–5 copies it) and how long ago; ✕ on hover removes it.
+/// One copy, its text or its whole image; on hover, "Copy" and ✕ to remove it (1–5 still copy).
 private struct ClipCard: View {
     let item: ClipboardHistory.Item
-    let number: Int
     let isDark: Bool
     let onPick: () -> Void
     let onDelete: () -> Void
@@ -212,12 +211,12 @@ private struct ClipCard: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
         Button(action: onPick) {
-            VStack(alignment: .leading, spacing: 0) {
-                content
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                footer
-            }
-            .background(shape.fill(fill))
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .overlay(alignment: .bottom) {
+                    if isHovering { copyLabel }
+                }
+                .background(shape.fill(fill))
             .clipShape(shape)
             .overlay(shape.strokeBorder(Color.primary.opacity(isDark ? 0.12 : 0.06)))
             .shadow(color: .black.opacity(isDark ? 0 : (isHovering ? 0.14 : 0.08)), radius: isHovering ? 18 : 12, y: 6)
@@ -241,33 +240,39 @@ private struct ClipCard: View {
         case .text(let text):
             Text(text.trimmingCharacters(in: .whitespacesAndNewlines))
                 .font(.system(size: 14))
-                .lineLimit(9)
+                .lineLimit(11)
                 .truncationMode(.tail)
                 .multilineTextAlignment(.leading)
-                .padding([.horizontal, .top], 14)
+                .padding(14)
         case .image(let image):
+            // Whole, however wide or tall: fitted in the card over a blurred, dimmed fill of itself,
+            // so a panorama or a long screenshot shows entirely and the card doesn't look empty.
+            // The fill is a background, so its overflow can't make the card (and the fit) bigger.
             Image(nsImage: image)
                 .resizable()
-                .scaledToFill()
+                .scaledToFit()
+                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+                .padding(10)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .blur(radius: 18)
+                        .opacity(0.45)
+                }
                 .clipped()
         }
     }
 
-    private var footer: some View {
-        HStack {
-            Text("\(number)")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
-                .frame(width: 20, height: 20)
-                .background(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.2)))
-            Spacer()
-            Text(item.copiedAt, style: .relative)
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-        }
-        .padding(12)
+    private var copyLabel: some View {
+        Text("Copy")
+            .font(.system(size: 12, weight: .semibold))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(.regularMaterial, in: Capsule())
+            .padding(12)
+            .transition(.opacity)
     }
 
     private var deleteButton: some View {
