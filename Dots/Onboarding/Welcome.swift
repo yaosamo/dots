@@ -327,17 +327,17 @@ struct WelcomeView: View {
         .opacity(placement.opacity)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPreviewed)
         .animation(.easeOut(duration: 0.2), value: state.selection)
-        .animation(.easeOut(duration: 0.2), value: state.leftAt != nil)
         .animation(.spring(response: 0.65, dampingFraction: 0.82).delay(Double(index) * 0.05), value: state.phase)
         // Emerging: out of focus and faint to crisp, in its own place.
         .animation(.easeOut(duration: tuning.values.dotEmerge), value: state.shownDots)
         .position(placement.center)
     }
 
-    /// The + dot fades in at the end of the bar when some tools are left off.
+    /// The + dot fades in at the end of the bar when some tools are left off, and stays over the
+    /// clouds while they leave, like the dots.
     @ViewBuilder
     private var plus: some View {
-        let isShown = state.phase == .bar && chosen.count < Dot.allCases.count && state.leftAt == nil
+        let isShown = state.phase == .bar && chosen.count < Dot.allCases.count
         if let slot = barSlots(slotCount).last {
             PlusDot(diameter: DotsBarMetrics.dotDiameter)
                 .opacity(isShown ? 1 : 0)
@@ -368,10 +368,10 @@ struct WelcomeView: View {
             return Placement(center: spot, diameter: dotSize)
         case .bar:
             let slots = barSlots(slotCount)
-            // Once in the bar, the welcome's dots fade out over the real bar's.
-            let handOver: Double = state.leftAt == nil ? 1 : 0
+            // The welcome's dots stay over the clouds as they leave; the real bar, right under them
+            // but below the overlay, takes over when the overlay closes.
             if let position = chosen.firstIndex(of: dot) {
-                return Placement(center: slots[position], diameter: DotsBarMetrics.dotDiameter, opacity: handOver)
+                return Placement(center: slots[position], diameter: DotsBarMetrics.dotDiameter)
             }
             // Left off: shrink away into the + slot.
             return Placement(center: slots.last ?? CGPoint(x: size.width / 2, y: 0),

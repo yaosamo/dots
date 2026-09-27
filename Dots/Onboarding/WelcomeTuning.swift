@@ -57,22 +57,22 @@ final class WelcomeTuning: ObservableObject {
         var hintDelay: Double = 0.8
         // Clouds (Shaders/CloudShader.metal)
         /// From opening until the clouds have come down; the first dot follows after `dotsDelay`.
-        var cloudDescend: Double = 2.8
+        var cloudDescend: Double = 1.636
         /// Once Done lands the dots, the clouds lift away over this.
         var cloudLeave: Double = 0.6
         /// Higher is smaller clouds.
-        var cloudSize: Double = 1.6
+        var cloudSize: Double = 2.762
         /// Higher is more see-through gaps.
-        var cloudHoles: Double = 0.46
-        var cloudSoftness: Double = 0.28
+        var cloudHoles: Double = 0.2
+        var cloudSoftness: Double = 0.337
         /// How far the layers fall, apart from each other: the depth.
-        var cloudDepth: Double = 0.6
+        var cloudDepth: Double = 0
         /// How far down the bank comes, in screen heights.
-        var cloudReach: Double = 1.05
-        var cloudEdgeFog: Double = 0.8
-        var cloudDrift: Double = 0.012
+        var cloudReach: Double = 0.741
+        var cloudEdgeFog: Double = 0.832
+        var cloudDrift: Double = 0.025
         /// Faint white behind the dots and text, so the text reads over a dark desktop.
-        var cloudVeil: Double = 0.25
+        var cloudVeil: Double = 0.878
         // Clouds' cost (see the readout in Welcome Lab)
         /// Of the screen's pixels, per side; the clouds are stretched up from there.
         var cloudResolution: Double = 0.33
@@ -98,7 +98,7 @@ final class WelcomeTuning: ObservableObject {
         var darkest: Double = 0.04
         // Lightning
         /// A `Lightning` raw value (kept as a number so it copies and saves like the rest).
-        var lightning: Double = 1
+        var lightning: Double = 0
         var lightningStrength: Double = 1
         var strikes: Double = 6
         // Bloom
