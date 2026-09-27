@@ -162,9 +162,10 @@ struct SetupView: View {
                 DotCard(dot: dot, isSelected: state.selection.contains(dot)) { state.toggle(dot) }
                     .frame(width: cards[index].width, height: cards[index].height)
                     .opacity(isShown ? 1 : 0)
-                    .offset(y: isShown ? 0 : 24)
-                    .animation(isShown ? .spring(response: 0.5, dampingFraction: 0.85).delay(0.12 + Double(index) * 0.05)
-                                       : .easeIn(duration: 0.15),
+                    // In from above the screen, one after another, and back up on the way out.
+                    .offset(y: isShown ? 0 : -(cards[index].maxY + 40))
+                    .animation(isShown ? .spring(response: 0.6, dampingFraction: 0.82).delay(0.12 + Double(index) * 0.06)
+                                       : .easeIn(duration: 0.3).delay(Double(index) * 0.03),
                                value: isShown)
                     .position(x: cards[index].midX, y: cards[index].midY)
             }
