@@ -126,17 +126,11 @@ private struct EffectRim: View {
         var values = tuning.values
         // The pen's rainbow spans the screen; around a bubble it's tighter, so every hue shows.
         values.rainbowScale *= 3
-        // The fire rages: taller, faster and wilder than the pen's, and it has its own shader.
-        let fire = (height: CGFloat(values.fireHeight * 1.8), speed: values.fireSpeed * 1.6,
-                    wobble: CGFloat(values.fireWobble * 1.4))
-        let margin: CGSize = if brush == .fire {
-            // Flames go out on every side, the tallest tongues up to 1.45× `height`.
-            CGSize(width: fire.height * 1.45 + fire.wobble / 2 + brush.lineWidth,
-                   height: fire.height * 1.45 + fire.wobble / 2 + brush.lineWidth)
-        } else {
-            brush.layerMargin(values)
-        }
-        let center = CGPoint(x: size.width / 2 + margin.width, y: size.height / 2 + margin.height)
+        // The fire rages: taller, faster and wilder than the pen's (and without its bands).
+        values.fireHeight *= 1.8
+        values.fireSpeed *= 1.6
+        values.fireWobble *= 1.4
+        let margin = brush.layerMargin(values)
         return TimelineView(.animation) { timeline in
             let time = Float(timeline.date.timeIntervalSince(start))
             let ring = RimShape(cornerRadius: cornerRadius, blob: blob, time: BlobOutline.now,
@@ -146,8 +140,8 @@ private struct EffectRim: View {
                 .padding(.horizontal, margin.width)
                 .padding(.vertical, margin.height)
             if brush == .fire {
-                ring.layerEffect(ShaderLibrary.rimFire(.float(time), .float2(center), .float(Float(fire.height)),
-                                                       .float(Float(fire.speed)), .float(Float(fire.wobble))),
+                ring.layerEffect(ShaderLibrary.rimFire(.float(time), .float(Float(values.fireHeight)),
+                                                       .float(Float(values.fireSpeed)), .float(Float(values.fireWobble))),
                                  maxSampleOffset: margin)
             } else {
                 ring.brushEffect(brush, time: time, origin: .zero, tuning: values)
