@@ -6,8 +6,15 @@ final class CameraSession {
     private let queue = DispatchQueue(label: "app.dots.camera")
     private var isConfigured = false
     private var observers: [NSObjectProtocol] = []
-    /// Frames for the head tracker, delivered only while it's the delegate (see `setFrameDelegate`).
-    private let frames = AVCaptureVideoDataOutput()
+    /// Frames for the head tracker. Only attached to the session while tracking: attached, it has the
+    /// camera deliver (and convert) every frame, which costs CPU even with no delegate.
+    private let frames: AVCaptureVideoDataOutput = {
+        let output = AVCaptureVideoDataOutput()
+        output.alwaysDiscardsLateVideoFrames = true
+        // The camera's own format, so frames aren't converted.
+        output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+        return output
+    }()
     private let framesQueue = DispatchQueue(label: "app.dots.camera.frames", qos: .userInitiated)
 
     init() {
@@ -47,10 +54,26 @@ final class CameraSession {
         }
     }
 
-    /// Starts or stops handing frames to `delegate` (nil stops).
+    /// Starts or stops handing frames to `delegate` (nil stops), attaching the frames output only
+    /// while there's one.
     func setFrameDelegate(_ delegate: AVCaptureVideoDataOutputSampleBufferDelegate?) {
         queue.async {
-            self.frames.setSampleBufferDelegate(delegate, queue: delegate == nil ? nil : self.framesQueue)
+            let isAttached = self.session.outputs.contains(self.frames)
+            if let delegate {
+                if !isAttached, self.session.canAddOutput(self.frames) {
+                    self.session.beginConfiguration()
+                    self.session.addOutput(self.frames)
+                    self.session.commitConfiguration()
+                }
+                self.frames.setSampleBufferDelegate(delegate, queue: self.framesQueue)
+            } else {
+                self.frames.setSampleBufferDelegate(nil, queue: nil)
+                if isAttached {
+                    self.session.beginConfiguration()
+                    self.session.removeOutput(self.frames)
+                    self.session.commitConfiguration()
+                }
+            }
         }
     }
 
@@ -87,10 +110,9 @@ final class CameraSession {
         }
 
         session.beginConfiguration()
-        session.sessionPreset = .high
+        // 720p: plenty for even the biggest bubble (640 px wide on Retina), and half 1080p's pixels.
+        session.sessionPreset = session.canSetSessionPreset(.hd1280x720) ? .hd1280x720 : .high
         if session.canAddInput(input) { session.addInput(input) }
-        frames.alwaysDiscardsLateVideoFrames = true
-        if session.canAddOutput(frames) { session.addOutput(frames) }
         session.commitConfiguration()
         isConfigured = true
         Log.camera.debug("Configured \(device.localizedName, privacy: .public) in \(Log.ms(since: startedAt), format: .fixed(precision: 1)) ms")

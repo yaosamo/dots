@@ -131,7 +131,8 @@ private struct EffectRim: View {
         values.fireSpeed *= 1.6
         values.fireWobble *= 1.4
         let margin = brush.layerMargin(values)
-        return TimelineView(.animation) { timeline in
+        // 30 fps: the flames and sparks read the same, at a quarter of ProMotion's redraws.
+        return TimelineView(.animation(minimumInterval: 1.0 / 30)) { timeline in
             let time = Float(timeline.date.timeIntervalSince(start))
             let ring = RimShape(cornerRadius: cornerRadius, blob: blob, time: BlobOutline.now,
                                 pull: BlobPull.shared.current(at: CACurrentMediaTime()))
@@ -267,6 +268,8 @@ final class CameraBubbleView: NSView {
         blobDuration = duration
         if blobLink == nil, blobFrom > 0 || blobTo > 0 {
             let link = displayLink(target: self, selector: #selector(stepBlob))
+            // The wobble is slow; 30 fps is smooth and a quarter of ProMotion's redraws.
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: 24, maximum: 30, preferred: 30)
             link.add(to: .main, forMode: .common)
             blobLink = link
         }
