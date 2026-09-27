@@ -73,6 +73,19 @@ final class WelcomeTuning: ObservableObject {
         var cloudDrift: Double = 0.012
         /// Faint white behind the dots and text, so the text reads over a dark desktop.
         var cloudVeil: Double = 0.25
+        // Clouds' cost (see the readout in Welcome Lab)
+        /// Of the screen's pixels, per side; the clouds are stretched up from there.
+        var cloudResolution: Double = 0.33
+        var cloudFPS: Double = 60
+        var cloudLayers: Double = 3
+        /// Noise passes (octaves) per part; 0 turns a part off. The far layer gets one less.
+        var cloudShapeDetail: Double = 4
+        /// 0 none, 1 cheap, 2 full.
+        var cloudWarp: Double = 1
+        var cloudPuffDetail: Double = 2
+        var cloudShadeDetail: Double = 2
+        var cloudWispDetail: Double = 2
+        var cloudEdgeDetail: Double = 2
         // Storm (Shaders/WelcomeShader.metal)
         var cloudScale: Double = 2.6
         /// Lower is cloudier.
@@ -195,6 +208,17 @@ struct WelcomeSection: Identifiable {
             WelcomeParameter(title: "Edge fog", keyPath: \.cloudEdgeFog, range: 0...2),
             WelcomeParameter(title: "Drift speed", keyPath: \.cloudDrift, range: 0...0.1),
             WelcomeParameter(title: "Veil behind text", keyPath: \.cloudVeil, range: 0...1),
+        ]),
+        WelcomeSection(title: "Clouds · cost", parameters: [
+            WelcomeParameter(title: "Resolution", keyPath: \.cloudResolution, range: 0.1...1, unit: "×"),
+            WelcomeParameter(title: "Frame rate cap", keyPath: \.cloudFPS, range: 15...120, step: 15, unit: " fps"),
+            WelcomeParameter(title: "Layers", keyPath: \.cloudLayers, range: 1...3, step: 1),
+            WelcomeParameter(title: "Shape detail", keyPath: \.cloudShapeDetail, range: 1...6, step: 1),
+            WelcomeParameter(title: "Warp (off, cheap, full)", keyPath: \.cloudWarp, range: 0...2, step: 1),
+            WelcomeParameter(title: "Puff detail", keyPath: \.cloudPuffDetail, range: 0...4, step: 1),
+            WelcomeParameter(title: "Shading detail", keyPath: \.cloudShadeDetail, range: 0...4, step: 1),
+            WelcomeParameter(title: "Wisp detail", keyPath: \.cloudWispDetail, range: 0...4, step: 1),
+            WelcomeParameter(title: "Front edge detail", keyPath: \.cloudEdgeDetail, range: 0...4, step: 1),
         ]),
         WelcomeSection(title: "Storm", parameters: [
             WelcomeParameter(title: "Cloud size", keyPath: \.cloudScale, range: 0.5...8),

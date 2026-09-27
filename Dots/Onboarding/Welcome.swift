@@ -74,8 +74,8 @@ final class WelcomeState: ObservableObject {
 }
 
 /// The clouds' script, from the seconds since the welcome opened (and since they started leaving),
-/// handed to the `welcomeClouds` shader.
-private struct CloudFrame {
+/// handed to the clouds' shader (see CloudsView).
+struct CloudFrame {
     var time: Double
     var descend: Double
     var leave: Double = 0
@@ -181,7 +181,7 @@ struct WelcomeView: View {
                 switch tuning.background {
                 case .storm: storm(size: size)
                 case .flow: flow
-                case .clouds: clouds(size: size)
+                case .clouds: CloudsView(startDate: state.startDate, leftAt: state.leftAt, seed: seed)
                 }
                 caption(below: center)
                 preview(above: center)
@@ -212,24 +212,6 @@ struct WelcomeView: View {
                     .float(seed), number(values.cloudScale), number(values.cloudCover), number(values.swirl),
                     number(values.drift), number(values.darknessSoftness), number(values.darkest),
                     number(values.lightning), number(values.bloomRim), number(values.bloomPop)
-                ))
-        }
-    }
-
-    private func clouds(size: CGSize) -> some View {
-        TimelineView(.animation) { timeline in
-            let values = tuning.values
-            let frame = CloudFrame(time: timeline.date.timeIntervalSince(state.startDate),
-                                   leaving: state.leftAt.map { timeline.date.timeIntervalSince($0) },
-                                   tuning: values)
-            let number: (Double) -> Shader.Argument = { .float(Float($0)) }
-            Rectangle()
-                .fill(.white)
-                .colorEffect(ShaderLibrary.welcomeClouds(
-                    .float2(size), number(frame.time), number(frame.descend), number(frame.leave),
-                    number(frame.fade), .float(seed), number(values.cloudSize), number(values.cloudHoles),
-                    number(values.cloudSoftness), number(values.cloudDepth), number(values.cloudReach),
-                    number(values.cloudEdgeFog), number(values.cloudDrift), number(values.cloudVeil)
                 ))
         }
     }

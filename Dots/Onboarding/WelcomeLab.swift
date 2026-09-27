@@ -48,6 +48,7 @@ struct WelcomeLabView: View {
     let onReplay: () -> Void
     let onClose: () -> Void
 
+    @ObservedObject private var stats = CloudStats.shared
     @State private var didCopy = false
 
     var body: some View {
@@ -62,6 +63,14 @@ struct WelcomeLabView: View {
                     .keyboardShortcut("c", modifiers: [.command, .shift])
             }
             .padding(12)
+            if tuning.background == .clouds {
+                // What the clouds cost right now, to compare settings while they play.
+                Text(String(format: "Clouds: %.0f fps · %.1f ms GPU a frame · %.0f × %.0f px",
+                            stats.fps, stats.gpuMilliseconds, stats.drawnSize.width, stats.drawnSize.height))
+                    .font(.system(size: 12).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 8)
+            }
             Divider()
             Form {
                 Section("Text") {
