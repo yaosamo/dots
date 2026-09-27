@@ -7,6 +7,9 @@ import SwiftUI
 final class CloudStats: ObservableObject {
     static let shared = CloudStats()
 
+    /// Set while Welcome Lab is open; otherwise the clouds don't measure anything.
+    var isWatched = false
+
     @Published private(set) var fps: Double = 0
     @Published private(set) var gpuMilliseconds: Double = 0
     /// The size the clouds are drawn at, in pixels, before being stretched to the screen.
@@ -108,10 +111,12 @@ final class CloudsMetalView: MTKView, MTKViewDelegate {
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
 
-        let drawnSize = drawableSize
-        buffer.addCompletedHandler { buffer in
-            let gpu = buffer.gpuEndTime - buffer.gpuStartTime
-            DispatchQueue.main.async { CloudStats.shared.record(gpuSeconds: gpu, drawnSize: drawnSize) }
+        if CloudStats.shared.isWatched {
+            let drawnSize = drawableSize
+            buffer.addCompletedHandler { buffer in
+                let gpu = buffer.gpuEndTime - buffer.gpuStartTime
+                DispatchQueue.main.async { CloudStats.shared.record(gpuSeconds: gpu, drawnSize: drawnSize) }
+            }
         }
         buffer.present(drawable)
         buffer.commit()

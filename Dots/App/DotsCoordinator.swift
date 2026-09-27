@@ -86,8 +86,10 @@ final class DotsCoordinator: ObservableObject {
     private var pen: PenController?
     private var timer: DiceTimerController?
     private var clipboard: ClipboardController?
+    #if DEBUG
     private var shaderLab: ShaderLabController?
     private var welcomeLab: WelcomeLabController?
+    #endif
     private let onboarding = OnboardingController()
 
     func start() {
@@ -96,6 +98,7 @@ final class DotsCoordinator: ObservableObject {
         pen = PenController { [weak self] in self?.set(.pen, isOn: $0) }
         timer = DiceTimerController { [weak self] in self?.set(.timer, isOn: $0) }
         clipboard = ClipboardController { [weak self] in self?.set(.clipboard, isOn: $0) }
+        #if DEBUG
         shaderLab = ShaderLabController(
             onPreviewTasks: { [weak self] in self?.toggle(.tasks) },
             onTogglePen: { [weak self] in self?.toggle(.pen) }
@@ -104,6 +107,7 @@ final class DotsCoordinator: ObservableObject {
             onReplay: { [weak self] in self?.replayWelcome() },
             onClose: { [weak self] in self?.closeWelcome() }
         )
+        #endif
         bar = DotsBarController(coordinator: self)
         statusMenu = StatusMenuController(coordinator: self)
         syncEnabledDots()
@@ -214,6 +218,7 @@ final class DotsCoordinator: ObservableObject {
         pen?.saveBoard()
     }
 
+    #if DEBUG
     func showShaderLab() {
         shaderLab?.show()
     }
@@ -234,6 +239,7 @@ final class DotsCoordinator: ObservableObject {
         onboarding.dismiss()
         bar?.show()
     }
+    #endif
 
     private func set(_ dot: Dot, isOn: Bool) {
         if isOn { active.insert(dot) } else { active.remove(dot) }

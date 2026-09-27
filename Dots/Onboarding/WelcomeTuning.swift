@@ -1,6 +1,6 @@
 import Foundation
 
-/// Every knob of the first-launch welcome, edited live in Welcome Lab (menu bar menu). Values
+/// Every knob of the first-launch welcome, edited live in Welcome Lab (menu bar menu, debug builds). Values
 /// persist between launches. Welcome Lab's "Copy" produces a `Values(...)` literal; paste it over
 /// the defaults below to make a tuning permanent.
 @MainActor
@@ -77,9 +77,14 @@ final class WelcomeTuning: ObservableObject {
     }
 
     private init() {
+        #if DEBUG
         // A saved tuning from an older set of fields fails to decode; fall back to the defaults.
         values = UserDefaults.standard.data(forKey: Self.defaultsKey)
             .flatMap { try? JSONDecoder().decode(Values.self, from: $0) } ?? Values()
+        #else
+        // Releases always use the defaults below: the labs, which change them, are debug-only.
+        values = Values()
+        #endif
     }
 
     func reset() {
@@ -105,69 +110,56 @@ final class WelcomeTuning: ObservableObject {
     }
 }
 
-/// One slider in Welcome Lab.
-struct WelcomeParameter: Identifiable {
-    let title: String
-    let keyPath: WritableKeyPath<WelcomeTuning.Values, Double>
-    let range: ClosedRange<Double>
-    var step: Double?
-    var unit = ""
-
-    var id: String { title }
-}
-
-struct WelcomeSection: Identifiable {
-    let title: String
-    let parameters: [WelcomeParameter]
-
-    var id: String { title }
-
-    static let all: [WelcomeSection] = [
-        WelcomeSection(title: "Timing", parameters: [
-            WelcomeParameter(title: "Between dots", keyPath: \.dotBeat, range: 0...1.5, unit: "s"),
-            WelcomeParameter(title: "Dot emerges over", keyPath: \.dotEmerge, range: 0.1...3, unit: "s"),
-            WelcomeParameter(title: "Text after last dot", keyPath: \.textDelay, range: 0...3, unit: "s"),
-            WelcomeParameter(title: "Hint and Done after text", keyPath: \.hintDelay, range: 0...3, unit: "s"),
+#if DEBUG
+/// Welcome Lab's sliders, section by section.
+enum WelcomeLabSections {
+    static let all: [LabSection<WelcomeTuning.Values>] = [
+        LabSection(title: "Timing", parameters: [
+            LabParameter(title: "Between dots", keyPath: \.dotBeat, range: 0...1.5, unit: "s"),
+            LabParameter(title: "Dot emerges over", keyPath: \.dotEmerge, range: 0.1...3, unit: "s"),
+            LabParameter(title: "Text after last dot", keyPath: \.textDelay, range: 0...3, unit: "s"),
+            LabParameter(title: "Hint and Done after text", keyPath: \.hintDelay, range: 0...3, unit: "s"),
         ]),
-        WelcomeSection(title: "Clouds", parameters: [
-            WelcomeParameter(title: "Come down over", keyPath: \.cloudDescend, range: 0.5...8, unit: "s"),
-            WelcomeParameter(title: "First dot at (share of come down)", keyPath: \.cloudDotsAt, range: 0...1.5),
-            WelcomeParameter(title: "Lift away over", keyPath: \.cloudLeave, range: 0.1...2, unit: "s"),
-            WelcomeParameter(title: "Cards after clouds (+ menu)", keyPath: \.cloudSetupEnterDelay, range: 0...1.5, unit: "s"),
-            WelcomeParameter(title: "Lift after dots (+ menu)", keyPath: \.cloudSetupLeaveDelay, range: 0...0.75, unit: "s"),
-            WelcomeParameter(title: "Cloud size", keyPath: \.cloudSize, range: 0.3...5),
-            WelcomeParameter(title: "Gaps", keyPath: \.cloudHoles, range: 0.2...0.8),
-            WelcomeParameter(title: "Edge softness", keyPath: \.cloudSoftness, range: 0.02...0.6),
-            WelcomeParameter(title: "Depth", keyPath: \.cloudDepth, range: 0...2),
-            WelcomeParameter(title: "Reach", keyPath: \.cloudReach, range: 0.3...1.4),
-            WelcomeParameter(title: "Edge fog", keyPath: \.cloudEdgeFog, range: 0...2),
-            WelcomeParameter(title: "Drift speed", keyPath: \.cloudDrift, range: 0...0.1),
-            WelcomeParameter(title: "Veil behind text", keyPath: \.cloudVeil, range: 0...1),
+        LabSection(title: "Clouds", parameters: [
+            LabParameter(title: "Come down over", keyPath: \.cloudDescend, range: 0.5...8, unit: "s"),
+            LabParameter(title: "First dot at (share of come down)", keyPath: \.cloudDotsAt, range: 0...1.5),
+            LabParameter(title: "Lift away over", keyPath: \.cloudLeave, range: 0.1...2, unit: "s"),
+            LabParameter(title: "Cards after clouds (+ menu)", keyPath: \.cloudSetupEnterDelay, range: 0...1.5, unit: "s"),
+            LabParameter(title: "Lift after dots (+ menu)", keyPath: \.cloudSetupLeaveDelay, range: 0...0.75, unit: "s"),
+            LabParameter(title: "Cloud size", keyPath: \.cloudSize, range: 0.3...5),
+            LabParameter(title: "Gaps", keyPath: \.cloudHoles, range: 0.2...0.8),
+            LabParameter(title: "Edge softness", keyPath: \.cloudSoftness, range: 0.02...0.6),
+            LabParameter(title: "Depth", keyPath: \.cloudDepth, range: 0...2),
+            LabParameter(title: "Reach", keyPath: \.cloudReach, range: 0.3...1.4),
+            LabParameter(title: "Edge fog", keyPath: \.cloudEdgeFog, range: 0...2),
+            LabParameter(title: "Drift speed", keyPath: \.cloudDrift, range: 0...0.1),
+            LabParameter(title: "Veil behind text", keyPath: \.cloudVeil, range: 0...1),
         ]),
-        WelcomeSection(title: "Clouds · cost", parameters: [
-            WelcomeParameter(title: "Resolution", keyPath: \.cloudResolution, range: 0.1...1, unit: "×"),
-            WelcomeParameter(title: "Frame rate cap", keyPath: \.cloudFPS, range: 15...120, step: 15, unit: " fps"),
-            WelcomeParameter(title: "Layers", keyPath: \.cloudLayers, range: 1...3, step: 1),
-            WelcomeParameter(title: "Shape detail", keyPath: \.cloudShapeDetail, range: 1...6, step: 1),
-            WelcomeParameter(title: "Warp (off, cheap, full)", keyPath: \.cloudWarp, range: 0...2, step: 1),
-            WelcomeParameter(title: "Puff detail", keyPath: \.cloudPuffDetail, range: 0...4, step: 1),
-            WelcomeParameter(title: "Shading detail", keyPath: \.cloudShadeDetail, range: 0...4, step: 1),
-            WelcomeParameter(title: "Wisp detail", keyPath: \.cloudWispDetail, range: 0...4, step: 1),
-            WelcomeParameter(title: "Front edge detail", keyPath: \.cloudEdgeDetail, range: 0...4, step: 1),
+        LabSection(title: "Clouds · cost", parameters: [
+            LabParameter(title: "Resolution", keyPath: \.cloudResolution, range: 0.1...1, unit: "×"),
+            LabParameter(title: "Frame rate cap", keyPath: \.cloudFPS, range: 15...120, step: 15, unit: " fps"),
+            LabParameter(title: "Layers", keyPath: \.cloudLayers, range: 1...3, step: 1),
+            LabParameter(title: "Shape detail", keyPath: \.cloudShapeDetail, range: 1...6, step: 1),
+            LabParameter(title: "Warp (off, cheap, full)", keyPath: \.cloudWarp, range: 0...2, step: 1),
+            LabParameter(title: "Puff detail", keyPath: \.cloudPuffDetail, range: 0...4, step: 1),
+            LabParameter(title: "Shading detail", keyPath: \.cloudShadeDetail, range: 0...4, step: 1),
+            LabParameter(title: "Wisp detail", keyPath: \.cloudWispDetail, range: 0...4, step: 1),
+            LabParameter(title: "Front edge detail", keyPath: \.cloudEdgeDetail, range: 0...4, step: 1),
         ]),
-        WelcomeSection(title: "Dots", parameters: [
-            WelcomeParameter(title: "Size", keyPath: \.dotSize, range: 30...220, unit: "pt"),
-            WelcomeParameter(title: "Spacing", keyPath: \.dotSpacing, range: 40...320, unit: "pt"),
-            WelcomeParameter(title: "Vertical offset", keyPath: \.dotsOffsetY, range: -400...400, unit: "pt"),
-            WelcomeParameter(title: "Start blur", keyPath: \.dotBlur, range: 0...60, unit: "pt"),
-            WelcomeParameter(title: "Start scale", keyPath: \.dotStartScale, range: 0...1.5),
+        LabSection(title: "Dots", parameters: [
+            LabParameter(title: "Size", keyPath: \.dotSize, range: 30...220, unit: "pt"),
+            LabParameter(title: "Spacing", keyPath: \.dotSpacing, range: 40...320, unit: "pt"),
+            LabParameter(title: "Vertical offset", keyPath: \.dotsOffsetY, range: -400...400, unit: "pt"),
+            LabParameter(title: "Start blur", keyPath: \.dotBlur, range: 0...60, unit: "pt"),
+            LabParameter(title: "Start scale", keyPath: \.dotStartScale, range: 0...1.5),
         ]),
-        WelcomeSection(title: "Text", parameters: [
-            WelcomeParameter(title: "Message size", keyPath: \.textSize, range: 10...80, unit: "pt"),
-            WelcomeParameter(title: "Hint size", keyPath: \.hintSize, range: 8...40, unit: "pt"),
-            WelcomeParameter(title: "Width", keyPath: \.textWidth, range: 200...1400, unit: "pt"),
-            WelcomeParameter(title: "Gap below dots", keyPath: \.textGap, range: -100...400, unit: "pt"),
-            WelcomeParameter(title: "Darkness", keyPath: \.textOpacity, range: 0.1...1),
+        LabSection(title: "Text", parameters: [
+            LabParameter(title: "Message size", keyPath: \.textSize, range: 10...80, unit: "pt"),
+            LabParameter(title: "Hint size", keyPath: \.hintSize, range: 8...40, unit: "pt"),
+            LabParameter(title: "Width", keyPath: \.textWidth, range: 200...1400, unit: "pt"),
+            LabParameter(title: "Gap below dots", keyPath: \.textGap, range: -100...400, unit: "pt"),
+            LabParameter(title: "Darkness", keyPath: \.textOpacity, range: 0.1...1),
         ]),
     ]
 }
+#endif
