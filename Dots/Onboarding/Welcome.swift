@@ -6,7 +6,7 @@ import SwiftUI
 /// a storm that gathers darker and darker until a bloom sweeps it away. Clicking a dot previews its tool; Done flies the chosen dots up into the bar.
 /// Every timing, effect, size and word comes from `WelcomeTuning` (Welcome Lab in the menu bar menu).
 @MainActor
-final class WelcomeState: ObservableObject {
+final class WelcomeState: ObservableObject, OnboardingFlow {
     /// Floating mid-screen, or flying to / sitting in the bar.
     enum Phase { case dots, bar }
 
@@ -24,6 +24,7 @@ final class WelcomeState: ObservableObject {
     /// When the clouds started to leave, once the dots have landed in the bar.
     @Published var leftAt: Date?
     private var isFinishing = false
+    private var isCancelled = false
 
     /// Schedules the dots, text and hint from the tuning's timings (the storm itself follows the
     /// clock; see StormFrame).
@@ -74,8 +75,17 @@ final class WelcomeState: ObservableObject {
         after(max(landing + 0.1, cleared) + 0.05, completion)
     }
 
+    /// Ended from outside (Welcome Lab's Replay or Close): nothing scheduled runs, and the camera stops.
+    func cancel() {
+        isCancelled = true
+        camera.stop()
+    }
+
     private func after(_ delay: TimeInterval, _ action: @escaping () -> Void) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, !self.isCancelled else { return }
+            action()
+        }
     }
 }
 

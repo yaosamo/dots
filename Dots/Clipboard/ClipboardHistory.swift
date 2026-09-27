@@ -77,10 +77,11 @@ final class ClipboardHistory: ObservableObject {
         case .text(let text): pasteboard.setString(text, forType: .string)
         case .image(let image): pasteboard.writeObjects([image])
         }
-        // Our own write: don't record it again, just move it to the top.
+        // Our own write: don't record it again, just move it to the top (one change, one save).
         lastChange = pasteboard.changeCount
-        items.removeAll { $0.id == item.id }
-        items.insert(item, at: 0)
+        var moved = items.filter { $0.id != item.id }
+        moved.insert(item, at: 0)
+        items = moved
     }
 
     func delete(_ item: Item) {
@@ -119,15 +120,16 @@ final class ClipboardHistory: ObservableObject {
         } else {
             return
         }
-        // Copying the same thing again just brings it to the top.
-        items.removeAll { $0.content == content }
-        items.insert(Item(content: content), at: 0)
-        if items.count > Self.limit { items.removeLast(items.count - Self.limit) }
+        // Copying the same thing again just brings it to the top; built aside so it's one save.
+        var updated = items.filter { $0.content != content }
+        updated.insert(Item(content: content), at: 0)
+        items = Array(updated.prefix(Self.limit))
     }
 }
 
 /// Keeps the clipboard history between launches: an index as JSON and each image as a PNG, in
-/// Application Support/Dots/Clipboard. Writes happen off the main thread, in order.
+/// Application Support/Dots/Clipboard. All file work (and turning images into PNGs) happens off the
+/// main thread, in order.
 @MainActor
 final class ClipboardStore {
     private struct Entry: Codable {
@@ -136,8 +138,17 @@ final class ClipboardStore {
         var copiedAt: Date
     }
 
+    /// An image handed to the store's queue; it's only read there, never changed.
+    private struct Pending: @unchecked Sendable {
+        let url: URL
+        let image: NSImage
+    }
+
     private let directory: URL
     private let queue = DispatchQueue(label: "app.dots.clipboard-store", qos: .utility)
+    /// Items whose PNG has been (or is queued to be) written. Kept here rather than checked on disk,
+    /// so a save queued right after another never mistakes a file that's about to go for one to keep.
+    private var written = Set<UUID>()
 
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -159,32 +170,35 @@ final class ClipboardStore {
                 return ClipboardHistory.Item(id: entry.id, content: .text(text), copiedAt: entry.copiedAt)
             }
             guard let image = NSImage(contentsOf: imageURL(for: entry.id)) else { return nil }
+            written.insert(entry.id)
             return ClipboardHistory.Item(id: entry.id, content: .image(image), copiedAt: entry.copiedAt)
         }
     }
 
     func save(_ items: [ClipboardHistory.Item]) {
         var entries: [Entry] = []
-        var newImages: [(URL, Data)] = []
+        var newImages: [Pending] = []
+        var imageIDs = Set<UUID>()
         for item in items {
             switch item.content {
             case .text(let text):
                 entries.append(Entry(id: item.id, text: text, copiedAt: item.copiedAt))
             case .image(let image):
                 entries.append(Entry(id: item.id, copiedAt: item.copiedAt))
-                let url = imageURL(for: item.id)
+                imageIDs.insert(item.id)
                 // An item's image never changes, so it's written once.
-                if !FileManager.default.fileExists(atPath: url.path), let tiff = image.tiffRepresentation {
-                    newImages.append((url, tiff))
-                }
+                if !written.contains(item.id) { newImages.append(Pending(url: imageURL(for: item.id), image: image)) }
             }
         }
-        let keep = Set(entries.filter { $0.text == nil }.map { imageURL(for: $0.id).lastPathComponent })
+        written = imageIDs
+        let keep = Set(imageIDs.map { imageURL(for: $0).lastPathComponent })
         let directory = directory, indexURL = indexURL
         queue.async {
-            for (url, tiff) in newImages {
-                let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
-                try? png?.write(to: url, options: .atomic)
+            for pending in newImages {
+                let png = pending.image.tiffRepresentation
+                    .flatMap(NSBitmapImageRep.init(data:))?
+                    .representation(using: .png, properties: [:])
+                try? png?.write(to: pending.url, options: .atomic)
             }
             if let data = try? JSONEncoder().encode(entries) { try? data.write(to: indexURL, options: .atomic) }
             // Images of items that have dropped off the end.

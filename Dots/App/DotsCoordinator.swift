@@ -163,8 +163,10 @@ final class DotsCoordinator: ObservableObject {
 
     private func present(_ mode: OnboardingController.Mode) {
         guard !onboarding.isVisible else { return }
+        // Every full-screen overlay makes way for it.
         tasks?.hide()
         pen?.hide()
+        clipboard?.hide()
         onboarding.show(mode: mode, enabled: Set(settings.enabled)) { [weak self] selection in
             self?.apply(selection)
         }

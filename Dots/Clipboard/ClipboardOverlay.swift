@@ -13,7 +13,8 @@ final class ClipboardController: DotFeature {
     private var keyMonitor: Any?
     private var state: ClipboardOverlayState?
 
-    private(set) var isVisible = false
+    /// Off as soon as it starts closing, so the shortcut can reopen it during the exit.
+    var isVisible: Bool { state.map { !$0.isDismissing } ?? false }
 
     init(onVisibilityChange: @escaping (Bool) -> Void) {
         self.onVisibilityChange = onVisibilityChange
@@ -46,7 +47,6 @@ final class ClipboardController: DotFeature {
         }
         NSApp.activate()
         panel.makeKeyAndOrderFront(nil)
-        isVisible = true
         onVisibilityChange(true)
     }
 
@@ -73,11 +73,11 @@ final class ClipboardController: DotFeature {
         state.isDismissing = true
         onVisibilityChange(false)
         DispatchQueue.main.asyncAfter(deadline: .now() + ClipboardOverlayView.exitDuration) { [weak self] in
+            // Reopened meanwhile: that's a new state, and it stays.
             guard let self, self.state === state else { return }
             self.panel.orderOut(nil)
             self.panel.contentView = nil
             self.state = nil
-            self.isVisible = false
         }
     }
 }

@@ -10,7 +10,8 @@ final class TaskOverlayController: DotFeature {
     private var keyMonitor: Any?
     private var state: TaskListState?
 
-    private(set) var isVisible = false
+    /// Off as soon as it starts closing, so the shortcut can reopen it during the exit.
+    var isVisible: Bool { state.map { !$0.isDismissing } ?? false }
 
     init(onVisibilityChange: @escaping (Bool) -> Void) {
         self.onVisibilityChange = onVisibilityChange
@@ -43,7 +44,6 @@ final class TaskOverlayController: DotFeature {
             return isConsumed ? nil : event
         }
         panel.makeKeyAndOrderFront(nil)
-        isVisible = true
         onVisibilityChange(true)
     }
 
@@ -55,15 +55,12 @@ final class TaskOverlayController: DotFeature {
         state.isDismissing = true
         onVisibilityChange(false)
         DispatchQueue.main.asyncAfter(deadline: .now() + TaskOverlayView.exitDuration) { [weak self] in
-            self?.finishHiding()
+            // Reopened meanwhile: that's a new state, and it stays.
+            guard let self, self.state === state else { return }
+            self.panel.orderOut(nil)
+            self.panel.contentView = nil
+            self.state = nil
         }
-    }
-
-    private func finishHiding() {
-        panel.orderOut(nil)
-        panel.contentView = nil
-        state = nil
-        isVisible = false
     }
 }
 
