@@ -167,9 +167,10 @@ private struct CloudRim: View {
     var body: some View {
         // Room for the outer puffs, within the window's margin.
         let side = min(size.width * 0.28, CameraModel.padding)
-        // The billows hang about a quarter of the width below; the band reaches a fifth above.
+        // The billows hang about a quarter of the width below (squashed to fit the margin when the
+        // bubble is big); the bumps reach a third of it above.
         let below = min(size.width * 0.3, CameraModel.padding)
-        let layer = CGSize(width: size.width + side * 2, height: size.width * 0.3 + below)
+        let layer = CGSize(width: size.width + side * 2, height: size.width * 0.4 + below)
         TimelineView(.animation(minimumInterval: 1.0 / 30)) { timeline in
             Rectangle()
                 .fill(.white)
