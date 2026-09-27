@@ -155,9 +155,9 @@ final class CameraController: DotFeature {
     private var hasPositioned = false
 
     private(set) var isVisible = false
-    private lazy var tracker = HeadTracker { [weak self] face, size in
-        DispatchQueue.main.async { self?.bubble.faceMoved(to: face, videoSize: size) }
-    }
+    private lazy var tracker = HeadTracker(onTarget: { [weak self] point, size in
+        DispatchQueue.main.async { self?.bubble.trackedMoved(to: point, videoSize: size) }
+    })
 
     init(onVisibilityChange: @escaping (Bool) -> Void) {
         self.onVisibilityChange = onVisibilityChange
@@ -189,7 +189,7 @@ final class CameraController: DotFeature {
         Log.camera.debug("Panel hidden")
     }
 
-    /// Head tracking runs only for the blob, while the camera is open.
+    /// Head and hand tracking run only for the blob, while the camera is open.
     private func updateTracking() {
         let isOn = isVisible && model.shape == .blob
         model.session.setFrameDelegate(isOn ? tracker : nil)

@@ -192,6 +192,8 @@ final class CameraBubbleView: NSView {
     private var blobTo: CGFloat = 0
     private var blobStart: TimeInterval = 0
     private var blobDuration: TimeInterval = 0
+    /// The camera frame's width over height (from the tracker's frames).
+    private var videoAspect: CGFloat = 16 / 9
     private let previewLayer: AVCaptureVideoPreviewLayer
     private var startObserver: NSObjectProtocol?
     /// Off for previews embedded in another window (Welcome), which shouldn't move with the bubble.
@@ -304,12 +306,13 @@ final class CameraBubbleView: NSView {
         let pull = BlobPull.shared.current(at: CACurrentMediaTime())
         let path = BlobOutline.path(size: bounds.size, cornerRadius: current.cornerRadius, amount: amount,
                                     time: BlobOutline.now, pull: pull)
-        // The video and the mask reach past the bubble, so there's picture where the blob stretches.
+        // Where the blob grows past the bubble (sideways), show the camera's frame uncropped: the same
+        // scale as filling the bubble, just not cut to its width, so nothing zooms.
+        let natural = max(bounds.width, bounds.height * videoAspect)
+        previewLayer.frame = CGRect(x: (bounds.width - natural) / 2, y: 0, width: natural, height: bounds.height)
         let reach = BlobOutline.reach(for: bounds.size) * amount
-        let extended = bounds.insetBy(dx: -reach, dy: -reach)
-        previewLayer.frame = extended
-        var shift = CGAffineTransform(translationX: reach, y: reach)
-        blobMask.frame = extended
+        var shift = CGAffineTransform(translationX: reach, y: 0)
+        blobMask.frame = bounds.insetBy(dx: -reach, dy: 0)
         blobMask.path = path.copy(using: &shift)
         clipLayer.masksToBounds = false
         clipLayer.mask = blobMask
@@ -323,13 +326,15 @@ final class CameraBubbleView: NSView {
         blobOutline.isHidden = false
     }
 
-    /// Head tracking: leaning moves your face off the bubble's center, and the blob reaches that way.
-    /// `face` is 0…1 across and up the unmirrored frame; the preview is mirrored and fills the bubble.
-    func faceMoved(to face: CGPoint?, videoSize: CGSize) {
-        guard let face, videoSize.width > 0, videoSize.height > 0 else {
+    /// Head and hand tracking: your hand, or else your head, off the bubble's center pulls the blob
+    /// that way. `point` is 0…1 across and up the unmirrored frame; the preview is mirrored and fills
+    /// the bubble.
+    func trackedMoved(to point: CGPoint?, videoSize: CGSize) {
+        guard let face = point, videoSize.width > 0, videoSize.height > 0 else {
             BlobPull.shared.target = .zero
             return
         }
+        videoAspect = videoSize.width / videoSize.height
         let bubble = clipLayer.bounds.size
         let scale = max(bubble.width / videoSize.width, bubble.height / videoSize.height)
         // From the bubble's center, in points, as the (mirrored, cropped) preview shows it.

@@ -4,7 +4,8 @@ import Foundation
 /// The camera's blob: the bubble's rounded rectangle, sampled all the way round, with each point
 /// pulled in by a few slow waves drifting around the edge, so it wobbles like a drop. `amount` 0 is
 /// exactly the rounded rectangle, which is what lets any shape morph into the blob. The waves only
-/// pull inward; reaching out toward your head (`pull`) is the one thing that goes past the edge. Shared by the video's mask
+/// pull inward. Toward your head or hand (`pull`), that side fills out to the edge and, left or
+/// right, a little past it (where the camera's wide frame has picture). Shared by the video's mask
 /// (CameraBubbleView) and the effect rim (CameraView), so they wobble as one.
 enum BlobOutline {
     private static let samples = 128
@@ -14,13 +15,13 @@ enum BlobOutline {
     /// Seconds for the drift; the same clock on both sides.
     static var now: TimeInterval { Date().timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 10_000) }
 
-    /// How far the blob can reach out toward your head (BlobPull), past its resting edge.
+    /// How far past its edge the blob can grow sideways toward your head or hand (BlobPull).
     static func reach(for size: CGSize) -> CGFloat {
-        min(min(size.width, size.height) * 0.22, 48)
+        min(min(size.width, size.height) * 0.2, 40)
     }
 
-    /// `pull`: a direction and strength (0…1), y up, that the blob bulges toward, up to `reach(for:)`
-    /// out past its edge. `flipped`: y grows downward (SwiftUI), so the waves and the pull land where
+    /// `pull`: a direction and strength (0…1), y up, that the blob grows toward: that side loses its
+    /// inward wobble, and sideways reaches up to `reach(for:)` past the edge. `flipped`: y grows downward (SwiftUI), so the waves and the pull land where
     /// they do in Core Animation.
     static func path(size: CGSize, cornerRadius: CGFloat, amount: CGFloat, time: TimeInterval,
                      pull: CGVector = .zero, flipped: Bool = false) -> CGPath {
@@ -38,11 +39,15 @@ enum BlobOutline {
             let wave = 0.5 * sin(2 * angle + 0.9 * t)
                 + 0.3 * sin(3 * angle - 1.3 * t + 1)
                 + 0.2 * sin(5 * angle + 1.7 * t + 2) // −1…1
-            // A lobe toward the pull, fading out around the sides.
-            let lobe = pow(max(direction.x * toward.x + direction.y * toward.y, 0), 2.5)
-            let distance = edge * (1 - amount * depth * (0.5 + 0.5 * wave)) + reach * lobe
+            // The side toward the pull, broad and fading around the sides: it fills out to the edge,
+            // and past it only left and right (the video has no picture above or below).
+            let lobe = pow(max(direction.x * toward.x + direction.y * toward.y, 0), 1.5) * strength
+            let inward = amount * depth * (0.5 + 0.5 * wave) * (1 - lobe)
+            let distance = edge * (1 - inward)
+            // Past the edge only sideways: that side is pushed toward the pull's left or right.
+            let outward = reach / max(strength, 0.001) * lobe * toward.x
             let y = direction.y * distance
-            let point = CGPoint(x: half.width + direction.x * distance, y: half.height + (flipped ? -y : y))
+            let point = CGPoint(x: half.width + direction.x * distance + outward, y: half.height + (flipped ? -y : y))
             index == 0 ? path.move(to: point) : path.addLine(to: point)
         }
         path.closeSubpath()
