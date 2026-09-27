@@ -107,6 +107,10 @@ final class CameraSession {
 
     private func configure() {
         let startedAt = ProcessInfo.processInfo.systemUptime
+        // Center Stage follows your face and body on every frame, inside the app (a big share of the
+        // camera's CPU); a little selfie bubble doesn't need it, so Dots turns it off for itself.
+        AVCaptureDevice.centerStageControlMode = .app
+        AVCaptureDevice.isCenterStageEnabled = false
         let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .unspecified)
             ?? AVCaptureDevice.default(for: .video)
         guard let device, let input = try? AVCaptureDeviceInput(device: device) else {
