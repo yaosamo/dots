@@ -126,6 +126,10 @@ private struct EffectRim: View {
         var values = tuning.values
         // The pen's rainbow spans the screen; around a bubble it's tighter, so every hue shows.
         values.rainbowScale *= 3
+        // And the fire rages: taller, faster, wilder than the pen's.
+        values.fireHeight *= 1.8
+        values.fireSpeed *= 1.6
+        values.fireWobble *= 1.4
         let margin = brush.layerMargin(values)
         return TimelineView(.animation) { timeline in
             RimShape(cornerRadius: cornerRadius, blob: blob, time: BlobOutline.now)
