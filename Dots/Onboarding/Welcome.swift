@@ -234,7 +234,8 @@ struct WelcomeView: View {
 
     // MARK: Text and Done
 
-    private static func textFont(size: CGFloat) -> Font {
+    /// The welcome's type, shared with dot setup's heading.
+    static func textFont(size: CGFloat) -> Font {
         .custom("SFCompact-Light", size: size)
     }
 

@@ -118,9 +118,9 @@ final class WelcomeTuning: ObservableObject {
         var dotBlur: Double = 18
         var dotStartScale: Double = 0.8
         // Text
-        var message: String = "hello, we’re dots - small and fun everyday tools for your computer"
-        var hint: String = "click a dot to see what it does"
-        var textSize: Double = 28
+        var message: String = "Hello, we’re dots - small and fun everyday tools for your computer"
+        var hint: String = "Click a dot to see what it does"
+        var textSize: Double = 24
         var hintSize: Double = 16
         var textWidth: Double = 560
         /// From the dots' bottom edge to the text's top.
@@ -129,7 +129,8 @@ final class WelcomeTuning: ObservableObject {
     }
 
     static let shared = WelcomeTuning()
-    private static let defaultsKey = "welcomeTuning"
+    /// Versioned: a new version drops saved tunings so changed defaults (the text) take effect.
+    private static let defaultsKey = "welcomeTuning.2"
 
     @Published var values: Values {
         didSet { save() }

@@ -156,13 +156,17 @@ struct SetupView: View {
         let top = cards.first?.minY ?? 0
         let bottom = cards.last?.maxY ?? 0
         return ZStack {
+            // The welcome's headline and hint styles (sizes and darkness from Welcome Lab).
+            let values = WelcomeTuning.shared.values
             VStack(spacing: 10) {
                 Text("Choose your dots")
-                    .font(.system(size: 34, weight: .bold))
+                    .font(WelcomeView.textFont(size: values.textSize))
+                    .foregroundStyle(Color.black.opacity(values.textOpacity))
                 Text("Each dot is a tool. Turn on the ones you need, and add more any time from + in the bar.")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.secondary)
+                    .font(WelcomeView.textFont(size: values.hintSize))
+                    .foregroundStyle(Color.black.opacity(values.textOpacity * 0.47))
             }
+            .multilineTextAlignment(.center)
             .position(x: midX, y: top - 70)
 
             ForEach(Array(Dot.allCases.enumerated()), id: \.element) { index, dot in
