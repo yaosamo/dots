@@ -113,7 +113,7 @@ struct SetupView: View {
     private enum Metrics {
         static let cardSize = CGSize(width: 250, height: 290)
         static let cardSpacing: CGFloat = 24
-        static let maxColumns = 4
+        static let maxColumns = 3
         /// The card's dot is drawn by the dot layer, centered this far below the card's top.
         static let cardDotCenter: CGFloat = 76
         static let cardDot: CGFloat = 64
@@ -198,7 +198,7 @@ struct SetupView: View {
         .allowsHitTesting(isShown)
     }
 
-    /// A row of cards (wrapping after four), centered on screen.
+    /// Rows of cards (three, then the rest), each centered on screen.
     private func cardFrames(in size: CGSize) -> [CGRect] {
         let count = Dot.allCases.count
         let columns = min(count, Metrics.maxColumns)
