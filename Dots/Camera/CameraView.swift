@@ -13,7 +13,7 @@ struct CameraView: View {
 
         ZStack {
             BubbleHost(view: bubble)
-            if let brush = model.effect.brush {
+            if model.isShown, let brush = model.effect.brush {
                 EffectRim(brush: brush, size: size, cornerRadius: model.cornerRadius,
                           blob: model.shape == .blob ? 1 : 0)
                     .transition(.opacity)
@@ -285,8 +285,12 @@ final class CameraBubbleView: NSView {
 
     /// Redraws the blob from where the bubble's morph is right now, so the two move as one.
     @objc private func stepBlob() {
-        // Hidden camera: nothing to draw (the link stays, so it picks up again when shown).
-        if window?.isVisible == false, blobTo > 0 { return }
+        // Hidden camera: stop redrawing (CameraController restarts the blob when it's shown again).
+        if window?.isVisible == false {
+            blobLink?.invalidate()
+            blobLink = nil
+            return
+        }
         let amount = currentBlobAmount
         CATransaction.begin()
         CATransaction.setDisableActions(true)

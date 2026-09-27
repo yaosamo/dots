@@ -98,6 +98,9 @@ final class CameraModel: ObservableObject {
     @Published private(set) var shape: Shape = .circle
     @Published private(set) var size: Size = .small
     @Published var isDenied = false
+    /// Whether the camera is on screen: the effect rim only animates while it is (a hidden window's
+    /// SwiftUI animations keep running otherwise).
+    @Published var isShown = false
     @Published private(set) var effect = Effect(rawValue: UserDefaults.standard.string(forKey: effectKey) ?? "") ?? .none {
         didSet { UserDefaults.standard.set(effect.rawValue, forKey: Self.effectKey) }
     }
@@ -175,6 +178,8 @@ final class CameraController: DotFeature {
         model.session.start { [weak self] in self?.model.isDenied = true }
         panel.orderFrontRegardless()
         isVisible = true
+        model.isShown = true
+        bubble.setBlob(model.shape == .blob, duration: 0)
         updateTracking()
         onVisibilityChange(true)
         Log.camera.debug("Panel shown in \(Log.ms(since: shownAt), format: .fixed(precision: 1)) ms (video appears once startRunning finishes)")
@@ -184,6 +189,7 @@ final class CameraController: DotFeature {
         panel.orderOut(nil)
         model.session.stop()
         isVisible = false
+        model.isShown = false
         updateTracking()
         onVisibilityChange(false)
         Log.camera.debug("Panel hidden")
