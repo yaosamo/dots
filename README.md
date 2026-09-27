@@ -2,7 +2,7 @@
 
 A macOS menu-bar-style utility: dots float at the top of the screen, each one a tool.
 
-**First launch:** the screen frosts over, the dots appear, and a card for each tool explains it; turn on the ones you want and they fly up into the bar. While some tools are off, the bar ends in a **+** dot that opens the same picker (**Esc** cancels). **Choose Dots…** in the menu bar menu does too, and **Show Welcome** replays the intro.
+**First launch:** the screen frosts over, the dots appear, and a card for each tool explains it; turn on the ones you want and they fly up into the bar. While some tools are off, the bar ends in a **+** dot that opens the same picker (**Esc** cancels). **Choose Dots…** in the menu bar menu does too, and **Show Welcome** replays the intro. **Welcome Lab…** (menu bar menu) has a control for every step of the welcome: timings, storm, lightning style (none, glow, bolts, sheet), bloom, dot size and placement, and the text. **Replay** restarts it, **Copy** copies the values as a `WelcomeTuning.Values(...)` literal to paste in as new defaults, **Reset** goes back to them. Tweaks are saved between launches.
 
 | Dot | Shortcut | Colour when on | What it does |
 |-----|----------|----------------|--------------|

@@ -40,6 +40,12 @@ final class OnboardingController {
         panel.makeKeyAndOrderFront(nil)
     }
 
+    /// Ends a flow on the spot without applying anything (Welcome Lab's Replay and Close).
+    func dismiss() {
+        guard isVisible else { return }
+        close()
+    }
+
     private func close() {
         panel.orderOut(nil)
         panel.contentView = nil

@@ -87,6 +87,7 @@ final class DotsCoordinator: ObservableObject {
     private var timer: DiceTimerController?
     private var clipboard: ClipboardController?
     private var shaderLab: ShaderLabController?
+    private var welcomeLab: WelcomeLabController?
     private let onboarding = OnboardingController()
 
     func start() {
@@ -99,6 +100,10 @@ final class DotsCoordinator: ObservableObject {
             onPreviewTasks: { [weak self] in self?.toggle(.tasks) },
             onTogglePen: { [weak self] in self?.toggle(.pen) }
         )
+        welcomeLab = WelcomeLabController(
+            onReplay: { [weak self] in self?.replayWelcome() },
+            onClose: { [weak self] in self?.closeWelcome() }
+        )
         bar = DotsBarController(coordinator: self)
         statusMenu = StatusMenuController(coordinator: self)
         syncEnabledDots()
@@ -109,10 +114,16 @@ final class DotsCoordinator: ObservableObject {
             showWelcome()
         }
         #if DEBUG
-        // For testing without shortcuts: `Dots -open timer` opens that dot at launch.
-        if let name = UserDefaults.standard.string(forKey: "open"),
-           let dot = Dot.allCases.first(where: { $0.storageKey == name }) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.feature(for: dot)?.show() }
+        // For testing without shortcuts: `Dots -open timer` opens that dot at launch, and
+        // `Dots -open welcome` plays the welcome with Welcome Lab open.
+        if let name = UserDefaults.standard.string(forKey: "open") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                if name == "welcome" {
+                    self.replayWelcome()
+                } else if let dot = Dot.allCases.first(where: { $0.storageKey == name }) {
+                    self.feature(for: dot)?.show()
+                }
+            }
         }
         #endif
     }
@@ -197,6 +208,23 @@ final class DotsCoordinator: ObservableObject {
 
     func showShaderLab() {
         shaderLab?.show()
+    }
+
+    func showWelcomeLab() {
+        welcomeLab?.show()
+    }
+
+    /// Welcome Lab: start the welcome over with the current tuning.
+    private func replayWelcome() {
+        onboarding.dismiss()
+        showWelcome()
+        welcomeLab?.show() // keep the lab in front and focused
+    }
+
+    /// Welcome Lab: end the welcome without choosing anything, and bring the bar back.
+    private func closeWelcome() {
+        onboarding.dismiss()
+        bar?.show()
     }
 
     private func set(_ dot: Dot, isOn: Bool) {

@@ -1,9 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// The first-launch welcome: a storm gathers in the middle of the screen, blows apart, and leaves
-/// the dots floating under "Welcome to Dots." Clicking a dot previews its tool; Done flies the
-/// chosen dots up into the bar.
+/// The first-launch welcome: the dots emerge one by one above a line of text, over Onlook's flow
+/// (dark, with ink that trails the pointer) or a storm that gathers darker and darker until a bloom
+/// sweeps it away. Clicking a dot previews its tool; Done flies the chosen dots up into the bar.
+/// Every timing, effect, size and word comes from `WelcomeTuning` (Welcome Lab in the menu bar menu).
 @MainActor
 final class WelcomeState: ObservableObject {
     /// Floating mid-screen, or flying to / sitting in the bar.
@@ -14,8 +15,8 @@ final class WelcomeState: ObservableObject {
     let camera = CameraSession()
 
     @Published var phase = Phase.dots
-    /// The dots pop out of the blast; the text and Done follow.
-    @Published var areDotsShown = false
+    /// How many dots have emerged after the bloom (one by one); then the text and Done follow.
+    @Published var shownDots = 0
     @Published var isTextShown = false
     @Published var isHintShown = false
     @Published var previewed: Dot?
@@ -24,10 +25,19 @@ final class WelcomeState: ObservableObject {
     @Published var leftAt: Date?
     private var isFinishing = false
 
+    /// Schedules the dots, text and hint from the tuning's timings (the storm itself follows the
+    /// clock; see StormFrame).
     func start() {
-        after(StormFrame.burstTime + 0.05) { self.areDotsShown = true }
-        after(StormFrame.burstTime + 0.6) { self.isTextShown = true }
-        after(StormFrame.burstTime + 1.3) { self.isHintShown = true }
+        let tuning = WelcomeTuning.shared.values
+        // The flow has no bloom to wait for: the dots follow its fade in.
+        let opening = WelcomeTuning.shared.background == .flow ? tuning.fadeIn : tuning.gather
+        let first = opening + tuning.dotsDelay
+        for index in Dot.allCases.indices {
+            after(first + Double(index) * tuning.dotBeat) { self.shownDots = index + 1 }
+        }
+        let text = first + Double(Dot.allCases.count - 1) * tuning.dotBeat + tuning.textDelay
+        after(text) { self.isTextShown = true }
+        after(text + tuning.hintDelay) { self.isHintShown = true }
     }
 
     /// Opens the dot's preview, or closes it if it's already open.
@@ -60,36 +70,28 @@ final class WelcomeState: ObservableObject {
 }
 
 /// The storm's script, all worked out from the seconds since the welcome opened (and since the
-/// clouds started leaving), and handed to the `welcomeStorm` shader.
+/// clouds started leaving) and the tuning's timings, and handed to the `welcomeStorm` shader.
 private struct StormFrame {
-    /// The blast: the biggest flash, the clouds fly apart, the dots appear.
-    static let burstTime: TimeInterval = 3
-
-    /// Strikes that build up to the blast: when, how bright, and where (0…1 of the screen).
-    private static let strikes: [(time: TimeInterval, strength: Float, at: CGPoint)] = [
-        (1.1, 0.45, CGPoint(x: 0.47, y: 0.46)),
-        (1.7, 0.6, CGPoint(x: 0.54, y: 0.52)),
-        (2.15, 0.5, CGPoint(x: 0.5, y: 0.44)),
-        (2.55, 0.8, CGPoint(x: 0.45, y: 0.53)),
-        (burstTime, 1.6, CGPoint(x: 0.5, y: 0.5)),
-    ]
-
     var gather: Float
+    var bloom: Float
     var burst: Float
     var flash: Float = 0
     var flashPoint = CGPoint(x: 0.5, y: 0.5)
+    var strikeSeed: Float = 0
     var fade: Float
 
-    init(time: TimeInterval, leaving: TimeInterval?) {
+    init(time: TimeInterval, leaving: TimeInterval?, tuning: WelcomeTuning.Values) {
         func smooth(_ x: Double) -> Double {
             let t = min(max(x, 0), 1)
             return t * t * (3 - 2 * t)
         }
         func easeOut(_ x: Double) -> Double { 1 - pow(1 - min(max(x, 0), 1), 3) }
 
-        gather = Float(smooth((time - 0.2) / (Self.burstTime - 0.4)))
-        var burst = easeOut((time - Self.burstTime) / 1.0)
-        var fade = smooth(time / 0.8)
+        let bloomTime = tuning.gather
+        gather = Float(smooth((time - 0.3) / max(bloomTime - 0.5, 0.1)))
+        bloom = Float(easeOut((time - bloomTime) / tuning.bloom))
+        var burst = easeOut((time - bloomTime) / tuning.burst)
+        var fade = smooth(time / tuning.fadeIn)
         if let leaving {
             burst += easeOut(leaving / 0.6) * 1.2 // the rest of the clouds blow off-screen
             fade *= 1 - smooth(leaving / 0.55)
@@ -97,20 +99,34 @@ private struct StormFrame {
         self.burst = Float(burst)
         self.fade = Float(fade)
         // The brightest strike right now, each dying away fast.
-        for strike in Self.strikes where time >= strike.time {
-            let brightness = strike.strength * Float(exp(-(time - strike.time) * 9))
+        for strike in Self.strikes(count: Int(tuning.strikes.rounded()), before: bloomTime) where time >= strike.time {
+            let brightness = strike.strength * Float(tuning.lightningStrength) * Float(exp(-(time - strike.time) * 9))
             if brightness > flash {
                 flash = brightness
                 flashPoint = strike.at
+                strikeSeed = strike.seed
             }
+        }
+    }
+
+    /// Strikes spread over the storm's second half, growing brighter toward the bloom, scattered
+    /// a little around the middle. The same every time for the same count.
+    private static func strikes(count: Int, before bloomTime: TimeInterval)
+        -> [(time: TimeInterval, strength: Float, at: CGPoint, seed: Float)] {
+        (0..<count).map { index in
+            let progress = count == 1 ? 1 : Double(index) / Double(count - 1)
+            let angle = Double(index) * 2.4
+            let radius = 0.03 + 0.025 * Double(index % 3)
+            return (time: bloomTime * (0.35 + 0.6 * progress),
+                    strength: Float(0.4 + 0.5 * progress),
+                    at: CGPoint(x: 0.5 + cos(angle) * radius, y: 0.5 + sin(angle) * radius),
+                    seed: Float(index) * 13.1)
         }
     }
 }
 
 struct WelcomeView: View {
     private enum Metrics {
-        static let dot: CGFloat = 48
-        static let spacing: CGFloat = 96
         static let cardWidth: CGFloat = 360
         /// Room for the preview card above the dots; the card sits at its bottom.
         static let cardSlot: CGFloat = 360
@@ -121,21 +137,34 @@ struct WelcomeView: View {
     let barSlots: (Int) -> [CGPoint]
     let onDone: () -> Void
 
+    @ObservedObject private var tuning = WelcomeTuning.shared
     /// Different clouds each time.
     @State private var seed = Float.random(in: 0...50)
+    /// Where the pointer's been, for the flow's ink.
+    @State private var trail = PointerTrail()
+
+    private var dotSize: CGFloat { tuning.values.dotSize }
+    /// The flow is near-black, so the text goes white on it.
+    private var isDark: Bool { tuning.background == .flow }
+    private var textColor: Color { isDark ? .white : .black }
 
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
-            let center = CGPoint(x: size.width / 2, y: size.height / 2 - 10)
+            let center = CGPoint(x: size.width / 2, y: size.height / 2 + tuning.values.dotsOffsetY)
             ZStack {
-                storm(size: size)
+                switch tuning.background {
+                case .storm: storm(size: size)
+                case .flow: flow
+                }
                 caption(below: center)
                 preview(above: center)
                 plus
                 dots(around: center, size: size)
             }
             .frame(width: size.width, height: size.height)
+            // Here rather than on the flow, so the ink follows over the dots and text too.
+            .onContinuousHover { trail.track($0) }
         }
         .ignoresSafeArea()
         .environment(\.colorScheme, .light)
@@ -145,33 +174,58 @@ struct WelcomeView: View {
     private func storm(size: CGSize) -> some View {
         TimelineView(.animation) { timeline in
             let time = timeline.date.timeIntervalSince(state.startDate)
-            let frame = StormFrame(time: time, leaving: state.leftAt.map { timeline.date.timeIntervalSince($0) })
+            let values = tuning.values
+            let frame = StormFrame(time: time, leaving: state.leftAt.map { timeline.date.timeIntervalSince($0) },
+                                   tuning: values)
+            let number: (Double) -> Shader.Argument = { .float(Float($0)) }
             Rectangle()
                 .fill(.white)
                 .colorEffect(ShaderLibrary.welcomeStorm(
-                    .float2(size), .float(Float(time)), .float(frame.gather), .float(frame.burst),
-                    .float(frame.flash), .float2(frame.flashPoint), .float(frame.fade), .float(seed)
+                    .float2(size), .float(Float(time)), .float(frame.gather), .float(frame.bloom), .float(frame.burst),
+                    .float(frame.flash), .float2(frame.flashPoint), .float(frame.strikeSeed), .float(frame.fade),
+                    .float(seed), number(values.cloudScale), number(values.cloudCover), number(values.swirl),
+                    number(values.drift), number(values.darknessSoftness), number(values.darkest),
+                    number(values.lightning), number(values.bloomRim), number(values.bloomPop)
                 ))
+        }
+    }
+
+    /// Onlook's flow, fading in and out when the storm would.
+    private var flow: some View {
+        TimelineView(.animation) { timeline in
+            let frame = StormFrame(time: timeline.date.timeIntervalSince(state.startDate),
+                                   leaving: state.leftAt.map { timeline.date.timeIntervalSince($0) },
+                                   tuning: tuning.values)
+            FlowBackground(trail: trail, style: .onlook, fade: Double(frame.fade))
         }
     }
 
     // MARK: Text and Done
 
+    private static func textFont(size: CGFloat) -> Font {
+        .custom("SFCompact-Light", size: size)
+    }
+
+    /// Hangs from just below the dots, so longer text grows downward.
     private func caption(below center: CGPoint) -> some View {
         let isShown = state.phase == .dots && state.isTextShown
+        let values = tuning.values
+        let top = center.y + dotSize / 2 + values.textGap
+        let slot: CGFloat = 800
         return VStack(spacing: 10) {
-            Text("Welcome to Dots.")
-                .font(.system(size: 46, weight: .bold))
-            Text("Mini tools to make your life a bit more fun.")
-                .font(.system(size: 20))
-                .foregroundStyle(.secondary)
+            // One simple style throughout: SF Compact Light.
+            Text(values.message)
+                .font(Self.textFont(size: values.textSize))
+                .foregroundStyle(textColor.opacity(values.textOpacity))
+                .frame(width: values.textWidth)
+                .fixedSize(horizontal: false, vertical: true)
             Group {
-                Text("Click a dot to see what it does.")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 14)
+                Text(values.hint)
+                    .font(Self.textFont(size: values.hintSize))
+                    .foregroundStyle(textColor.opacity(values.textOpacity * 0.47))
+                    .padding(.top, 18)
                 Button("Done", action: onDone)
-                    .buttonStyle(WelcomeButtonStyle())
+                    .buttonStyle(WelcomeButtonStyle(isOnDark: isDark))
                     .keyboardShortcut(.defaultAction)
                     .disabled(!isShown || !state.isHintShown || state.selection.isEmpty)
                     .padding(.top, 14)
@@ -184,7 +238,8 @@ struct WelcomeView: View {
         .opacity(isShown ? 1 : 0)
         .offset(y: isShown ? 0 : 12)
         .animation(isShown ? .easeOut(duration: 0.5) : .easeIn(duration: 0.2), value: isShown)
-        .position(x: center.x, y: center.y + 170)
+        .frame(height: slot, alignment: .top)
+        .position(x: center.x, y: top + slot / 2)
         .allowsHitTesting(isShown)
     }
 
@@ -200,7 +255,7 @@ struct WelcomeView: View {
             .id(dot)
             .transition(.scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
             .frame(height: Metrics.cardSlot, alignment: .bottom)
-            .position(x: center.x, y: center.y - Metrics.dot / 2 - 24 - Metrics.cardSlot / 2)
+            .position(x: center.x, y: center.y - dotSize / 2 - 24 - Metrics.cardSlot / 2)
         }
     }
 
@@ -229,30 +284,27 @@ struct WelcomeView: View {
         let inBar = state.phase == .bar
         let isPreviewed = state.previewed == dot
         return Button { state.tap(dot) } label: {
+            // Plain white dots, no icons.
             Circle()
                 .fill(.white)
                 .frame(width: placement.diameter, height: placement.diameter)
-                .overlay(
-                    Image(systemName: dot.symbol)
-                        .font(.system(size: placement.diameter * 0.38, weight: .semibold))
-                        .foregroundStyle(isPreviewed ? dot.tint : Color.black.opacity(0.45))
-                        .opacity(inBar ? 0 : 1)
-                )
                 .overlay(Circle().strokeBorder(dot.tint, lineWidth: isPreviewed ? 2.5 : 0).padding(-6))
                 .shadow(color: .black.opacity(inBar ? 0.35 : 0.14), radius: inBar ? 2 : 14, y: inBar ? 0 : 6)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .disabled(inBar || !state.areDotsShown)
+        .disabled(inBar || index >= state.shownDots)
         // Left out of the bar: dimmed until switched back on in its preview.
         .opacity(!inBar && !state.selection.contains(dot) ? 0.45 : 1)
         .scaleEffect(placement.scale)
+        .blur(radius: placement.blur)
         .opacity(placement.opacity)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPreviewed)
         .animation(.easeOut(duration: 0.2), value: state.selection)
         .animation(.easeOut(duration: 0.2), value: state.leftAt != nil)
         .animation(.spring(response: 0.65, dampingFraction: 0.82).delay(Double(index) * 0.05), value: state.phase)
-        .animation(.spring(response: 0.55, dampingFraction: 0.6).delay(Double(index) * 0.12), value: state.areDotsShown)
+        // Emerging: out of focus and faint to crisp, in its own place.
+        .animation(.easeOut(duration: tuning.values.dotEmerge), value: state.shownDots)
         .position(placement.center)
     }
 
@@ -274,17 +326,20 @@ struct WelcomeView: View {
         var diameter: CGFloat
         var scale: CGFloat = 1
         var opacity: Double = 1
+        var blur: CGFloat = 0
     }
 
     private func placement(of dot: Dot, index: Int, center: CGPoint, size: CGSize) -> Placement {
         switch state.phase {
         case .dots:
-            // Until the blast they wait, tiny and hidden, at its center.
-            guard state.areDotsShown else {
-                return Placement(center: center, diameter: Metrics.dot, scale: 0.01, opacity: 0)
-            }
             let offset = CGFloat(index) - CGFloat(Dot.allCases.count - 1) / 2
-            return Placement(center: CGPoint(x: center.x + offset * Metrics.spacing, y: center.y), diameter: Metrics.dot)
+            let spot = CGPoint(x: center.x + offset * tuning.values.dotSpacing, y: center.y)
+            // Until its turn, each dot waits in its place, blurred into the background.
+            guard index < state.shownDots else {
+                return Placement(center: spot, diameter: dotSize, scale: tuning.values.dotStartScale,
+                                 opacity: 0, blur: tuning.values.dotBlur)
+            }
+            return Placement(center: spot, diameter: dotSize)
         case .bar:
             let slots = barSlots(slotCount)
             // Once in the bar, the welcome's dots fade out over the real bar's.
@@ -391,6 +446,7 @@ private struct LiveCamera: NSViewRepresentable {
 
     func makeNSView(context: Context) -> CameraBubbleView {
         let view = CameraBubbleView(session: session.session)
+        view.dragsWindow = false
         view.setBubble(size: CGSize(width: diameter, height: diameter), cornerRadius: diameter / 2, duration: 0)
         return view
     }
@@ -554,15 +610,18 @@ private struct DemoBackdrop: View {
 }
 
 private struct WelcomeButtonStyle: ButtonStyle {
+    /// Inverted, white on black, over the flow.
+    var isOnDark = false
+
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(.white)
+            .font(.custom("SFCompact-Regular", size: 16)) // the welcome's type; Light is too thin here
+            .foregroundStyle(isOnDark ? .black : .white)
             .padding(.horizontal, 32)
             .padding(.vertical, 12)
-            .background(Capsule().fill(Color.black.opacity(0.85)))
+            .background(Capsule().fill((isOnDark ? Color.white : Color.black).opacity(0.85)))
             .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.4)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .contentShape(Capsule())

@@ -47,6 +47,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         shaderLab.target = self
         menu.addItem(shaderLab)
 
+        let welcomeLab = NSMenuItem(title: "Welcome Lab…", action: #selector(showWelcomeLab), keyEquivalent: "")
+        welcomeLab.target = self
+        menu.addItem(welcomeLab)
+
         let welcome = NSMenuItem(title: "Show Welcome", action: #selector(showWelcome), keyEquivalent: "")
         welcome.target = self
         menu.addItem(welcome)
@@ -73,6 +77,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     @objc private func showWelcome() {
         coordinator.showWelcome()
+    }
+
+    @objc private func showWelcomeLab() {
+        coordinator.showWelcomeLab()
     }
 
     @objc private func showShaderLab() {

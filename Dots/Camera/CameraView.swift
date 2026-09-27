@@ -114,6 +114,8 @@ final class CameraBubbleView: NSView {
     private let clipLayer = CALayer()
     private let previewLayer: AVCaptureVideoPreviewLayer
     private var startObserver: NSObjectProtocol?
+    /// Off for previews embedded in another window (Welcome), which shouldn't move with the bubble.
+    var dragsWindow = true
 
     init(session: AVCaptureSession) {
         previewLayer = AVCaptureVideoPreviewLayer(session: session)
@@ -183,6 +185,7 @@ final class CameraBubbleView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
+        guard dragsWindow else { return }
         window?.performDrag(with: event)
     }
 
