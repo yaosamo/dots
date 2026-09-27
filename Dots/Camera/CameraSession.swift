@@ -11,15 +11,25 @@ final class CameraSession {
     private let frames: AVCaptureVideoDataOutput = {
         let output = AVCaptureVideoDataOutput()
         output.alwaysDiscardsLateVideoFrames = true
-        // The camera's own format, so frames aren't converted, and small: tracking a head or hand
-        // needs no more, the camera scales them for free, and Vision has a quarter of 720p to look at.
-        output.videoSettings = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-            kCVPixelBufferWidthKey as String: 640,
-            kCVPixelBufferHeightKey as String: 360,
-        ]
         return output
     }()
+
+    /// The camera's own pixel format, so frames aren't converted, and small (640 wide): tracking a
+    /// head or hand needs no more, and the camera scales them for free. The height keeps the camera's
+    /// own aspect, which the blob and the pull work out from the frames they're given.
+    private func trackingSettings() -> [String: Any] {
+        var aspect: CGFloat = 16 / 9
+        if let input = session.inputs.compactMap({ $0 as? AVCaptureDeviceInput }).first {
+            let size = CMVideoFormatDescriptionGetDimensions(input.device.activeFormat.formatDescription)
+            if size.width > 0, size.height > 0 { aspect = CGFloat(size.width) / CGFloat(size.height) }
+        }
+        let height = Int((640 / aspect / 2).rounded()) * 2
+        return [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+            kCVPixelBufferWidthKey as String: 640,
+            kCVPixelBufferHeightKey as String: height,
+        ]
+    }
     private let framesQueue = DispatchQueue(label: "app.dots.camera.frames", qos: .userInitiated)
 
     init() {
@@ -65,6 +75,7 @@ final class CameraSession {
         queue.async {
             let isAttached = self.session.outputs.contains(self.frames)
             if let delegate {
+                self.frames.videoSettings = self.trackingSettings()
                 if !isAttached, self.session.canAddOutput(self.frames) {
                     self.session.beginConfiguration()
                     self.session.addOutput(self.frames)

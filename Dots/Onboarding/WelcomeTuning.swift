@@ -5,50 +5,8 @@ import Foundation
 /// the defaults below to make a tuning permanent.
 @MainActor
 final class WelcomeTuning: ObservableObject {
-    /// How lightning shows while the storm gathers.
-    enum Lightning: Int, CaseIterable, Identifiable {
-        case none, glow, bolts, sheet
-
-        var id: Int { rawValue }
-
-        var title: String {
-            switch self {
-            case .none: "None"
-            case .glow: "Glow"
-            case .bolts: "Bolts"
-            case .sheet: "Sheet"
-            }
-        }
-    }
-
-    /// What's behind the dots: the storm that blooms open, Onlook's flow with ink that trails
-    /// the pointer (Onboarding/FlowBackground.swift), or clouds that come down over the screen
-    /// (Shaders/CloudShader.metal).
-    enum Background: Int, CaseIterable, Identifiable {
-        case storm, flow, clouds
-
-        var id: Int { rawValue }
-
-        var title: String {
-            switch self {
-            case .storm: "Storm"
-            case .flow: "Flow"
-            case .clouds: "Clouds"
-            }
-        }
-    }
-
     struct Values: Codable, Equatable {
-        /// A `Background` raw value (kept as a number so it copies and saves like the rest).
-        var background: Double = 2
         // Timing, in seconds
-        var fadeIn: Double = 1.4
-        /// From opening until the bloom bursts; the storm gathers and darkens meanwhile.
-        var gather: Double = 5.2
-        var bloom: Double = 1.2
-        var burst: Double = 1.4
-        /// After the bloom bursts, before the first dot.
-        var dotsDelay: Double = 0.7
         var dotBeat: Double = 0.35
         var dotEmerge: Double = 0.9
         /// After the last dot, before the text.
@@ -56,7 +14,7 @@ final class WelcomeTuning: ObservableObject {
         /// After the text, before the hint and Done.
         var hintDelay: Double = 0.8
         // Clouds (Shaders/CloudShader.metal)
-        /// From opening until the clouds have come down; the first dot follows after `dotsDelay`.
+        /// From opening until the clouds have come down (the first dot comes partway, see `cloudDotsAt`).
         var cloudDescend: Double = 1.636
         /// When the first dot comes, as a share of the clouds' coming down.
         var cloudDotsAt: Double = 0.5
@@ -92,24 +50,6 @@ final class WelcomeTuning: ObservableObject {
         var cloudShadeDetail: Double = 2
         var cloudWispDetail: Double = 2
         var cloudEdgeDetail: Double = 2
-        // Storm (Shaders/WelcomeShader.metal)
-        var cloudScale: Double = 2.6
-        /// Lower is cloudier.
-        var cloudCover: Double = 0.38
-        var swirl: Double = 2.2
-        var drift: Double = 0.04
-        /// How soft the edge of the closing darkness is.
-        var darknessSoftness: Double = 0.35
-        /// The sky's darkest grey.
-        var darkest: Double = 0.04
-        // Lightning
-        /// A `Lightning` raw value (kept as a number so it copies and saves like the rest).
-        var lightning: Double = 0
-        var lightningStrength: Double = 1
-        var strikes: Double = 6
-        // Bloom
-        var bloomRim: Double = 1.2
-        var bloomPop: Double = 0.35
         // Dots, in points
         var dotSize: Double = 120
         var dotSpacing: Double = 168
@@ -140,16 +80,6 @@ final class WelcomeTuning: ObservableObject {
         // A saved tuning from an older set of fields fails to decode; fall back to the defaults.
         values = UserDefaults.standard.data(forKey: Self.defaultsKey)
             .flatMap { try? JSONDecoder().decode(Values.self, from: $0) } ?? Values()
-    }
-
-    var background: Background {
-        get { Background(rawValue: Int(values.background.rounded())) ?? .clouds }
-        set { values.background = Double(newValue.rawValue) }
-    }
-
-    var lightning: Lightning {
-        get { Lightning(rawValue: Int(values.lightning.rounded())) ?? .glow }
-        set { values.lightning = Double(newValue.rawValue) }
     }
 
     func reset() {
@@ -194,11 +124,6 @@ struct WelcomeSection: Identifiable {
 
     static let all: [WelcomeSection] = [
         WelcomeSection(title: "Timing", parameters: [
-            WelcomeParameter(title: "Fade in", keyPath: \.fadeIn, range: 0.1...4, unit: "s"),
-            WelcomeParameter(title: "Storm gathers for", keyPath: \.gather, range: 1...12, unit: "s"),
-            WelcomeParameter(title: "Bloom sweep", keyPath: \.bloom, range: 0.2...4, unit: "s"),
-            WelcomeParameter(title: "Clouds blow apart", keyPath: \.burst, range: 0.2...4, unit: "s"),
-            WelcomeParameter(title: "First dot after bloom (storm, flow)", keyPath: \.dotsDelay, range: 0...3, unit: "s"),
             WelcomeParameter(title: "Between dots", keyPath: \.dotBeat, range: 0...1.5, unit: "s"),
             WelcomeParameter(title: "Dot emerges over", keyPath: \.dotEmerge, range: 0.1...3, unit: "s"),
             WelcomeParameter(title: "Text after last dot", keyPath: \.textDelay, range: 0...3, unit: "s"),
@@ -229,22 +154,6 @@ struct WelcomeSection: Identifiable {
             WelcomeParameter(title: "Shading detail", keyPath: \.cloudShadeDetail, range: 0...4, step: 1),
             WelcomeParameter(title: "Wisp detail", keyPath: \.cloudWispDetail, range: 0...4, step: 1),
             WelcomeParameter(title: "Front edge detail", keyPath: \.cloudEdgeDetail, range: 0...4, step: 1),
-        ]),
-        WelcomeSection(title: "Storm", parameters: [
-            WelcomeParameter(title: "Cloud size", keyPath: \.cloudScale, range: 0.5...8),
-            WelcomeParameter(title: "Cloud cover", keyPath: \.cloudCover, range: 0.1...0.7),
-            WelcomeParameter(title: "Swirl", keyPath: \.swirl, range: 0...6),
-            WelcomeParameter(title: "Drift speed", keyPath: \.drift, range: 0...0.3),
-            WelcomeParameter(title: "Darkness edge softness", keyPath: \.darknessSoftness, range: 0.02...1),
-            WelcomeParameter(title: "Darkest sky", keyPath: \.darkest, range: 0...0.5),
-        ]),
-        WelcomeSection(title: "Lightning", parameters: [
-            WelcomeParameter(title: "Strength", keyPath: \.lightningStrength, range: 0...3),
-            WelcomeParameter(title: "Strikes", keyPath: \.strikes, range: 0...16, step: 1),
-        ]),
-        WelcomeSection(title: "Bloom", parameters: [
-            WelcomeParameter(title: "Edge brightness", keyPath: \.bloomRim, range: 0...3),
-            WelcomeParameter(title: "Burst flash", keyPath: \.bloomPop, range: 0...1),
         ]),
         WelcomeSection(title: "Dots", parameters: [
             WelcomeParameter(title: "Size", keyPath: \.dotSize, range: 30...220, unit: "pt"),

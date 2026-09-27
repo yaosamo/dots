@@ -63,7 +63,7 @@ struct WelcomeLabView: View {
                     .keyboardShortcut("c", modifiers: [.command, .shift])
             }
             .padding(12)
-            if tuning.background == .clouds {
+            do {
                 // What the clouds cost right now, to compare settings while they play.
                 Text(String(format: "Clouds: %.0f fps · %.1f ms GPU a frame · %.0f × %.0f px",
                             stats.fps, stats.gpuMilliseconds, stats.drawnSize.width, stats.drawnSize.height))
@@ -77,18 +77,6 @@ struct WelcomeLabView: View {
                     TextField("Message", text: $tuning.values.message, axis: .vertical)
                         .lineLimit(2...5)
                     TextField("Hint", text: $tuning.values.hint)
-                }
-                Section("Background") {
-                    Picker("Background", selection: $tuning.background) {
-                        ForEach(WelcomeTuning.Background.allCases) { Text($0.title).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                }
-                Section("Lightning style") {
-                    Picker("Style", selection: $tuning.lightning) {
-                        ForEach(WelcomeTuning.Lightning.allCases) { Text($0.title).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
                 }
                 ForEach(WelcomeSection.all) { section in
                     Section(section.title) {

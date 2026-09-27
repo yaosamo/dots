@@ -1,10 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// The first-launch welcome: the dots emerge one by one above a line of text, under clouds that
-/// come down over the screen, over Onlook's flow (dark, with ink that trails the pointer), or after
-/// a storm that gathers darker and darker until a bloom sweeps it away. Clicking a dot previews its tool; Done flies the chosen dots up into the bar.
-/// Every timing, effect, size and word comes from `WelcomeTuning` (Welcome Lab in the menu bar menu).
+/// The first-launch welcome: clouds come down over the screen, then the dots emerge one by one above a
+/// line of text. Clicking a dot previews its tool; Done flies the chosen dots up into the bar as the
+/// clouds lift. Every timing, size and word comes from `WelcomeTuning` (Welcome Lab, in debug builds).
 @MainActor
 final class WelcomeState: ObservableObject, OnboardingFlow {
     /// Floating mid-screen, or flying to / sitting in the bar.
@@ -15,7 +14,7 @@ final class WelcomeState: ObservableObject, OnboardingFlow {
     let camera = CameraSession()
 
     @Published var phase = Phase.dots
-    /// How many dots have emerged after the bloom (one by one); then the text and Done follow.
+    /// How many dots have emerged (one by one); then the text and Done follow.
     @Published var shownDots = 0
     @Published var isTextShown = false
     @Published var isHintShown = false
@@ -26,17 +25,12 @@ final class WelcomeState: ObservableObject, OnboardingFlow {
     private var isFinishing = false
     private var isCancelled = false
 
-    /// Schedules the dots, text and hint from the tuning's timings (the storm itself follows the
-    /// clock; see StormFrame).
+    /// Schedules the dots, text and hint from the tuning's timings (the clouds follow the clock; see
+    /// CloudFrame).
     func start() {
         let tuning = WelcomeTuning.shared.values
-        // The flow has no bloom to wait for: the dots follow its fade in.
         // The clouds don't have to finish coming down: the dots start partway through.
-        let first = switch WelcomeTuning.shared.background {
-        case .storm: tuning.gather + tuning.dotsDelay
-        case .flow: tuning.fadeIn + tuning.dotsDelay
-        case .clouds: tuning.cloudDescend * tuning.cloudDotsAt
-        }
+        let first = tuning.cloudDescend * tuning.cloudDotsAt
         for index in Dot.allCases.indices {
             after(first + Double(index) * tuning.dotBeat) { self.shownDots = index + 1 }
         }
@@ -55,7 +49,7 @@ final class WelcomeState: ObservableObject, OnboardingFlow {
     }
 
     /// Flies the chosen dots to the bar and shows the real bar under them as they land. The clouds
-    /// lift away as the dots fly; the storm and flow clear once they've landed.
+    /// lift away as the dots fly.
     func finish(onReveal: @escaping (Set<Dot>) -> Void, completion: @escaping () -> Void) {
         guard !isFinishing, !selection.isEmpty else { return }
         isFinishing = true
@@ -63,16 +57,11 @@ final class WelcomeState: ObservableObject, OnboardingFlow {
         camera.stop()
         phase = .bar
         let landing = BarFlight.landing
-        let isClouds = WelcomeTuning.shared.background == .clouds
-        if isClouds { leftAt = Date() }
+        leftAt = Date()
         // The real bar comes in right under the dots once they've all landed.
-        after(landing) {
-            onReveal(self.selection)
-            if !isClouds { self.leftAt = Date() }
-        }
-        // Once the bar is there under them and the clouds have lifted (the others take 0.6 s).
-        let cleared = isClouds ? WelcomeTuning.shared.values.cloudLeave : landing + 0.6
-        after(max(landing + 0.1, cleared) + 0.05, completion)
+        after(landing) { onReveal(self.selection) }
+        // Once the bar is there under them and the clouds have lifted.
+        after(max(landing + 0.1, WelcomeTuning.shared.values.cloudLeave) + 0.05, completion)
     }
 
     /// Ended from outside (Welcome Lab's Replay or Close): nothing scheduled runs, and the camera stops.
@@ -110,62 +99,6 @@ struct CloudFrame {
     }
 }
 
-/// The storm's script, all worked out from the seconds since the welcome opened (and since the
-/// clouds started leaving) and the tuning's timings, and handed to the `welcomeStorm` shader.
-private struct StormFrame {
-    var gather: Float
-    var bloom: Float
-    var burst: Float
-    var flash: Float = 0
-    var flashPoint = CGPoint(x: 0.5, y: 0.5)
-    var strikeSeed: Float = 0
-    var fade: Float
-
-    init(time: TimeInterval, leaving: TimeInterval?, tuning: WelcomeTuning.Values) {
-        func smooth(_ x: Double) -> Double {
-            let t = min(max(x, 0), 1)
-            return t * t * (3 - 2 * t)
-        }
-        func easeOut(_ x: Double) -> Double { 1 - pow(1 - min(max(x, 0), 1), 3) }
-
-        let bloomTime = tuning.gather
-        gather = Float(smooth((time - 0.3) / max(bloomTime - 0.5, 0.1)))
-        bloom = Float(easeOut((time - bloomTime) / tuning.bloom))
-        var burst = easeOut((time - bloomTime) / tuning.burst)
-        var fade = smooth(time / tuning.fadeIn)
-        if let leaving {
-            burst += easeOut(leaving / 0.6) * 1.2 // the rest of the clouds blow off-screen
-            fade *= 1 - smooth(leaving / 0.55)
-        }
-        self.burst = Float(burst)
-        self.fade = Float(fade)
-        // The brightest strike right now, each dying away fast.
-        for strike in Self.strikes(count: Int(tuning.strikes.rounded()), before: bloomTime) where time >= strike.time {
-            let brightness = strike.strength * Float(tuning.lightningStrength) * Float(exp(-(time - strike.time) * 9))
-            if brightness > flash {
-                flash = brightness
-                flashPoint = strike.at
-                strikeSeed = strike.seed
-            }
-        }
-    }
-
-    /// Strikes spread over the storm's second half, growing brighter toward the bloom, scattered
-    /// a little around the middle. The same every time for the same count.
-    private static func strikes(count: Int, before bloomTime: TimeInterval)
-        -> [(time: TimeInterval, strength: Float, at: CGPoint, seed: Float)] {
-        (0..<count).map { index in
-            let progress = count == 1 ? 1 : Double(index) / Double(count - 1)
-            let angle = Double(index) * 2.4
-            let radius = 0.03 + 0.025 * Double(index % 3)
-            return (time: bloomTime * (0.35 + 0.6 * progress),
-                    strength: Float(0.4 + 0.5 * progress),
-                    at: CGPoint(x: 0.5 + cos(angle) * radius, y: 0.5 + sin(angle) * radius),
-                    seed: Float(index) * 13.1)
-        }
-    }
-}
-
 struct WelcomeView: View {
     private enum Metrics {
         static let cardWidth: CGFloat = 360
@@ -181,65 +114,25 @@ struct WelcomeView: View {
     @ObservedObject private var tuning = WelcomeTuning.shared
     /// Different clouds each time.
     @State private var seed = Float.random(in: 0...50)
-    /// Where the pointer's been, for the flow's ink.
-    @State private var trail = PointerTrail()
 
     private var dotSize: CGFloat { tuning.values.dotSize }
-    /// The flow is near-black, so the text goes white on it.
-    private var isDark: Bool { tuning.background == .flow }
-    private var textColor: Color { isDark ? .white : .black }
 
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
             let center = CGPoint(x: size.width / 2, y: size.height / 2 + tuning.values.dotsOffsetY)
             ZStack {
-                switch tuning.background {
-                case .storm: storm(size: size)
-                case .flow: flow
-                case .clouds: CloudsView(startDate: state.startDate, leftAt: state.leftAt, seed: seed)
-                }
+                CloudsView(startDate: state.startDate, leftAt: state.leftAt, seed: seed)
                 caption(below: center)
                 preview(above: center)
                 plus
                 dots(around: center, size: size)
             }
             .frame(width: size.width, height: size.height)
-            // Here rather than on the flow, so the ink follows over the dots and text too.
-            .onContinuousHover { trail.track($0) }
         }
         .ignoresSafeArea()
         .environment(\.colorScheme, .light)
         .onAppear(perform: state.start)
-    }
-
-    private func storm(size: CGSize) -> some View {
-        TimelineView(.animation) { timeline in
-            let time = timeline.date.timeIntervalSince(state.startDate)
-            let values = tuning.values
-            let frame = StormFrame(time: time, leaving: state.leftAt.map { timeline.date.timeIntervalSince($0) },
-                                   tuning: values)
-            let number: (Double) -> Shader.Argument = { .float(Float($0)) }
-            Rectangle()
-                .fill(.white)
-                .colorEffect(ShaderLibrary.welcomeStorm(
-                    .float2(size), .float(Float(time)), .float(frame.gather), .float(frame.bloom), .float(frame.burst),
-                    .float(frame.flash), .float2(frame.flashPoint), .float(frame.strikeSeed), .float(frame.fade),
-                    .float(seed), number(values.cloudScale), number(values.cloudCover), number(values.swirl),
-                    number(values.drift), number(values.darknessSoftness), number(values.darkest),
-                    number(values.lightning), number(values.bloomRim), number(values.bloomPop)
-                ))
-        }
-    }
-
-    /// Onlook's flow, fading in and out when the storm would.
-    private var flow: some View {
-        TimelineView(.animation) { timeline in
-            let frame = StormFrame(time: timeline.date.timeIntervalSince(state.startDate),
-                                   leaving: state.leftAt.map { timeline.date.timeIntervalSince($0) },
-                                   tuning: tuning.values)
-            FlowBackground(trail: trail, style: .onlook, fade: Double(frame.fade))
-        }
     }
 
     // MARK: Text and Done
@@ -259,16 +152,16 @@ struct WelcomeView: View {
             // One simple style throughout: SF Compact Light.
             Text(values.message)
                 .font(Self.textFont(size: values.textSize))
-                .foregroundStyle(textColor.opacity(values.textOpacity))
+                .foregroundStyle(Color.black.opacity(values.textOpacity))
                 .frame(width: values.textWidth)
                 .fixedSize(horizontal: false, vertical: true)
             Group {
                 Text(values.hint)
                     .font(Self.textFont(size: values.hintSize))
-                    .foregroundStyle(textColor.opacity(values.textOpacity * 0.47))
+                    .foregroundStyle(Color.black.opacity(values.textOpacity * 0.47))
                     .padding(.top, 18)
                 Button("Done", action: onDone)
-                    .buttonStyle(WelcomeButtonStyle(isOnDark: isDark))
+                    .buttonStyle(WelcomeButtonStyle())
                     .keyboardShortcut(.defaultAction)
                     .disabled(!isShown || !state.isHintShown || state.selection.isEmpty)
                     .padding(.top, 14)
@@ -653,18 +546,15 @@ private struct DemoBackdrop: View {
 }
 
 private struct WelcomeButtonStyle: ButtonStyle {
-    /// Inverted, white on black, over the flow.
-    var isOnDark = false
-
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.custom("SFCompact-Regular", size: 16)) // the welcome's type; Light is too thin here
-            .foregroundStyle(isOnDark ? .black : .white)
+            .foregroundStyle(.white)
             .padding(.horizontal, 32)
             .padding(.vertical, 12)
-            .background(Capsule().fill((isOnDark ? Color.white : Color.black).opacity(0.85)))
+            .background(Capsule().fill(Color.black.opacity(0.85)))
             .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.4)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .contentShape(Capsule())
