@@ -65,7 +65,8 @@ final class WelcomeState: ObservableObject {
             onReveal(self.selection)
             self.leftAt = Date()
         }
-        after(1.4, completion)
+        // Once the clouds have lifted away (the other backgrounds are gone by then too).
+        after(0.8 + WelcomeTuning.shared.values.cloudLeave, completion)
     }
 
     private func after(_ delay: TimeInterval, _ action: @escaping () -> Void) {

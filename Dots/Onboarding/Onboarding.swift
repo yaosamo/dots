@@ -53,8 +53,8 @@ final class OnboardingController {
     }
 }
 
-/// Dot setup: the dots fly down from the bar onto a card per tool, where each can be switched on
-/// or off, then fly back up.
+/// Dot setup: the welcome's clouds come down, the dots fly down from the bar onto a card per tool,
+/// where each can be switched on or off, then fly back up as the clouds lift away.
 @MainActor
 final class SetupState: ObservableObject {
     /// Where the dots are: one per card, or in the bar.
@@ -65,9 +65,9 @@ final class SetupState: ObservableObject {
     /// Starts in the bar, where the dots are, then flies them down to the cards.
     @Published var phase = Phase.bar
     @Published var selection: Set<Dot>
-    @Published var isFrosted = false
-    /// Closing: the frost clears edges-first and the overlay's dots hand over to the bar's.
-    @Published var isDismissing = false
+    let startDate = Date()
+    /// When the clouds started to leave, once the dots have landed in the bar.
+    @Published var leftAt: Date?
     private var isFinishing = false
 
     init(enabled: Set<Dot>) {
@@ -76,7 +76,6 @@ final class SetupState: ObservableObject {
     }
 
     func start() {
-        withAnimation(.easeOut(duration: 0.4)) { isFrosted = true }
         after(0.05) { self.phase = .choose }
     }
 
@@ -84,8 +83,8 @@ final class SetupState: ObservableObject {
         if selection.contains(dot) { selection.remove(dot) } else { selection.insert(dot) }
     }
 
-    /// Flies the dots to the bar (`apply` false puts back the original set), hands over to the
-    /// real bar, then clears the frost.
+    /// Flies the dots to the bar (`apply` false puts back the original set), shows the real bar
+    /// under them, then lifts the clouds away.
     func finish(apply: Bool, onReveal: @escaping (Set<Dot>) -> Void, completion: @escaping () -> Void) {
         guard !isFinishing, !apply || !selection.isEmpty else { return }
         isFinishing = true
@@ -93,10 +92,9 @@ final class SetupState: ObservableObject {
         phase = .bar
         after(0.75) {
             onReveal(self.selection)
-            self.isDismissing = true
-            withAnimation(.easeIn(duration: 0.45)) { self.isFrosted = false }
+            self.leftAt = Date()
         }
-        after(1.3, completion)
+        after(0.8 + WelcomeTuning.shared.values.cloudLeave, completion)
     }
 
     private func after(_ delay: TimeInterval, _ action: @escaping () -> Void) {
@@ -120,15 +118,15 @@ struct SetupView: View {
     let onDone: () -> Void
     let onCancel: () -> Void
 
+    /// Different clouds each time.
+    @State private var seed = Float.random(in: 0...50)
+
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
             let cards = cardFrames(in: size)
             ZStack {
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .overlay(Color.black.opacity(0.55))
-                    .mask(FrostSweep(progress: state.isFrosted ? 1 : 0, recedesToCenter: state.isDismissing))
+                CloudsView(startDate: state.startDate, leftAt: state.leftAt, seed: seed)
 
                 choose(cards: cards, midX: size.width / 2)
                 plus
@@ -139,7 +137,7 @@ struct SetupView: View {
             .frame(width: size.width, height: size.height)
         }
         .ignoresSafeArea()
-        .environment(\.colorScheme, .dark)
+        .environment(\.colorScheme, .light)
         .onAppear { state.start() }
     }
 
@@ -215,7 +213,8 @@ struct SetupView: View {
     /// The + dot fades in at the end of the bar when some tools are left off.
     @ViewBuilder
     private var plus: some View {
-        let isShown = state.phase == .bar && chosen.count < Dot.allCases.count && !state.isDismissing
+        // Stays over the clouds while they leave, like the dots.
+        let isShown = state.phase == .bar && chosen.count < Dot.allCases.count
         if let slot = barSlots(slotCount).last {
             PlusDot(diameter: DotsBarMetrics.dotDiameter)
                 .opacity(isShown ? 1 : 0)
@@ -229,7 +228,7 @@ struct SetupView: View {
         let isSelected = state.selection.contains(dot)
         let placement = placement(of: dot, index: index, cards: cards, size: size)
         let fill: Color = switch state.phase {
-        case .choose: isSelected ? dot.tint : .white.opacity(0.14)
+        case .choose: isSelected ? dot.tint : Color(white: 0.86)
         case .bar: .white.opacity(0.9)
         }
         let inBar = state.phase == .bar
@@ -239,14 +238,13 @@ struct SetupView: View {
             .overlay(
                 Image(systemName: dot.symbol)
                     .font(.system(size: placement.diameter * 0.4, weight: .semibold))
-                    .foregroundStyle(.white.opacity(isSelected ? 1 : 0.55))
+                    .foregroundStyle(isSelected ? Color.white : Color.black.opacity(0.35))
                     .opacity(state.phase == .choose ? 1 : 0)
             )
             .shadow(color: inBar ? .black.opacity(0.35) : dot.tint.opacity(isSelected ? 0.55 : 0), radius: inBar ? 2 : 20)
             .scaleEffect(placement.scale)
             .opacity(placement.opacity)
             .animation(.easeOut(duration: 0.2), value: state.selection)
-            .animation(.easeOut(duration: 0.2), value: state.isDismissing)
             .animation(.spring(response: 0.65, dampingFraction: 0.82).delay(Double(index) * 0.05), value: state.phase)
             .position(placement.center)
             .allowsHitTesting(false)
@@ -267,10 +265,10 @@ struct SetupView: View {
                              diameter: Metrics.cardDot)
         case .bar:
             let slots = barSlots(slotCount)
-            // Once in the bar, the overlay's dots fade out over the real bar's identical ones.
-            let handOver: Double = state.isDismissing ? 0 : 1
+            // The overlay's dots stay over the clouds as they leave; the real bar, right under them
+            // but below the overlay, takes over when the overlay closes.
             if let position = chosen.firstIndex(of: dot) {
-                return Placement(center: slots[position], diameter: DotsBarMetrics.dotDiameter, opacity: handOver)
+                return Placement(center: slots[position], diameter: DotsBarMetrics.dotDiameter)
             }
             // Left off: shrink away into the + slot.
             return Placement(center: slots.last ?? CGPoint(x: size.width / 2, y: 0),
@@ -304,18 +302,18 @@ private struct DotCard: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(Capsule().strokeBorder(Color.white.opacity(0.2)))
+                .background(Capsule().strokeBorder(Color.black.opacity(0.15)))
         }
         .padding(.horizontal, 22)
         .padding(.bottom, 22)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(shape.fill(Color.white.opacity(isSelected ? 0.1 : 0.04)))
-        .overlay(shape.strokeBorder(isSelected ? dot.tint.opacity(0.7) : Color.white.opacity(0.1),
+        .background(shape.fill(.white).shadow(color: .black.opacity(isSelected ? 0.14 : 0.08), radius: 20, y: 8))
+        .overlay(shape.strokeBorder(isSelected ? dot.tint.opacity(0.7) : Color.black.opacity(0.06),
                                     lineWidth: isSelected ? 2 : 1))
         .overlay(alignment: .topTrailing) {
             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                 .font(.system(size: 22))
-                .foregroundStyle(isSelected ? dot.tint : Color.white.opacity(0.3))
+                .foregroundStyle(isSelected ? dot.tint : Color.black.opacity(0.2))
                 .padding(16)
         }
         .scaleEffect(isHovering ? 1.02 : 1)
@@ -335,10 +333,10 @@ private struct PillButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(isProminent ? Color.black : Color.white)
+            .foregroundStyle(isProminent ? Color.white : Color.black)
             .padding(.horizontal, 28)
             .padding(.vertical, 12)
-            .background(Capsule().fill(isProminent ? Color.white : Color.white.opacity(0.14)))
+            .background(Capsule().fill(isProminent ? Color.black.opacity(0.85) : Color.white.opacity(0.9)))
             .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.4)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .contentShape(Capsule())
