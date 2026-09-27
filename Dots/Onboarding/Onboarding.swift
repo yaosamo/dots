@@ -83,18 +83,19 @@ final class SetupState: ObservableObject {
         if selection.contains(dot) { selection.remove(dot) } else { selection.insert(dot) }
     }
 
-    /// Flies the dots to the bar (`apply` false puts back the original set), shows the real bar
-    /// under them, then lifts the clouds away.
+    /// Flies the dots to the bar (`apply` false puts back the original set) with the clouds lifting
+    /// away just behind them, and shows the real bar under the dots as they land.
     func finish(apply: Bool, onReveal: @escaping (Set<Dot>) -> Void, completion: @escaping () -> Void) {
         guard !isFinishing, !apply || !selection.isEmpty else { return }
         isFinishing = true
         if !apply { selection = original }
         phase = .bar
-        after(0.75) {
-            onReveal(self.selection)
-            self.leftAt = Date()
-        }
-        after(0.8 + WelcomeTuning.shared.values.cloudLeave, completion)
+        let landing: TimeInterval = 0.75
+        let values = WelcomeTuning.shared.values
+        // The clouds lift with the cards and dots, just behind them.
+        after(values.cloudSetupLeaveDelay) { self.leftAt = Date() }
+        after(landing) { onReveal(self.selection) }
+        after(max(landing, values.cloudSetupLeaveDelay + values.cloudLeave) + 0.05, completion)
     }
 
     private func after(_ delay: TimeInterval, _ action: @escaping () -> Void) {
