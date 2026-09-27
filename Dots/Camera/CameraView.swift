@@ -109,8 +109,8 @@ private struct ControlButton: View {
     }
 }
 
-/// The pen's shader brush (PenShaders.metal) drawn as a ring on the bubble's edge: a white stroke
-/// the shader turns into light, with room around it for the glow and flames. Its size and radius
+/// The pen's shader brush (PenShaders.metal; fire has its own, CameraShaders.metal) drawn as a ring
+/// on the bubble's edge: a white stroke the shader turns into light, with room around it for the glow and flames. Its size and radius
 /// come from the model, so it morphs with the bubble on the same curve.
 private struct EffectRim: View {
     let brush: Brush
@@ -126,19 +126,31 @@ private struct EffectRim: View {
         var values = tuning.values
         // The pen's rainbow spans the screen; around a bubble it's tighter, so every hue shows.
         values.rainbowScale *= 3
-        // And the fire rages: taller, faster, wilder than the pen's.
-        values.fireHeight *= 1.8
-        values.fireSpeed *= 1.6
-        values.fireWobble *= 1.4
-        let margin = brush.layerMargin(values)
+        // The fire rages: taller, faster and wilder than the pen's, and it has its own shader.
+        let fire = (height: CGFloat(values.fireHeight * 1.8), speed: values.fireSpeed * 1.6,
+                    wobble: CGFloat(values.fireWobble * 1.4))
+        let margin: CGSize = if brush == .fire {
+            // Flames go out on every side, the tallest tongues up to 1.45× `height`.
+            CGSize(width: fire.height * 1.45 + fire.wobble / 2 + brush.lineWidth,
+                   height: fire.height * 1.45 + fire.wobble / 2 + brush.lineWidth)
+        } else {
+            brush.layerMargin(values)
+        }
+        let center = CGPoint(x: size.width / 2 + margin.width, y: size.height / 2 + margin.height)
         return TimelineView(.animation) { timeline in
-            RimShape(cornerRadius: cornerRadius, blob: blob, time: BlobOutline.now)
+            let time = Float(timeline.date.timeIntervalSince(start))
+            let ring = RimShape(cornerRadius: cornerRadius, blob: blob, time: BlobOutline.now)
                 .stroke(brush.inkColor, lineWidth: brush.lineWidth)
                 .frame(width: size.width, height: size.height)
                 .padding(.horizontal, margin.width)
                 .padding(.vertical, margin.height)
-                .brushEffect(brush, time: Float(timeline.date.timeIntervalSince(start)), origin: .zero,
-                             tuning: values)
+            if brush == .fire {
+                ring.layerEffect(ShaderLibrary.rimFire(.float(time), .float2(center), .float(Float(fire.height)),
+                                                       .float(Float(fire.speed)), .float(Float(fire.wobble))),
+                                 maxSampleOffset: margin)
+            } else {
+                ring.brushEffect(brush, time: time, origin: .zero, tuning: values)
+            }
         }
         .allowsHitTesting(false)
     }

@@ -85,7 +85,7 @@ final class CameraModel: ObservableObject {
     }
 
     /// Room around the biggest bubble for its effect's glow and flames (the fire's are tallest).
-    static let padding: CGFloat = 52
+    static let padding: CGFloat = 64
     private static let effectKey = "camera.effect"
 
     /// Shared by the Core Animation bubble and the SwiftUI controls so they move as one.
