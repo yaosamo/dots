@@ -139,7 +139,8 @@ private struct EffectRim: View {
         let center = CGPoint(x: size.width / 2 + margin.width, y: size.height / 2 + margin.height)
         return TimelineView(.animation) { timeline in
             let time = Float(timeline.date.timeIntervalSince(start))
-            let ring = RimShape(cornerRadius: cornerRadius, blob: blob, time: BlobOutline.now)
+            let ring = RimShape(cornerRadius: cornerRadius, blob: blob, time: BlobOutline.now,
+                                pull: BlobPull.shared.current(at: CACurrentMediaTime()))
                 .stroke(brush.inkColor, lineWidth: brush.lineWidth)
                 .frame(width: size.width, height: size.height)
                 .padding(.horizontal, margin.width)
@@ -162,6 +163,7 @@ private struct RimShape: Shape {
     var cornerRadius: CGFloat
     var blob: CGFloat
     let time: TimeInterval
+    let pull: CGVector
 
     var animatableData: AnimatablePair<CGFloat, CGFloat> {
         get { AnimatablePair(cornerRadius, blob) }
@@ -170,7 +172,8 @@ private struct RimShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         guard blob > 0.001 else { return Path(roundedRect: rect, cornerRadius: cornerRadius, style: .circular) }
-        let outline = BlobOutline.path(size: rect.size, cornerRadius: cornerRadius, amount: blob, time: time, flipped: true)
+        let outline = BlobOutline.path(size: rect.size, cornerRadius: cornerRadius, amount: blob, time: time,
+                                       pull: pull, flipped: true)
         return Path(outline).offsetBy(dx: rect.minX, dy: rect.minY)
     }
 }
@@ -292,6 +295,8 @@ final class CameraBubbleView: NSView {
         guard amount > 0.001 || blobTo > 0 else {
             // Back to the plain rounded rectangle.
             clipLayer.mask = nil
+            clipLayer.masksToBounds = true
+            previewLayer.frame = clipLayer.bounds
             clipLayer.borderWidth = 1
             shadowLayer.shadowPath = nil
             shadowLayer.backgroundColor = NSColor.black.cgColor
@@ -302,10 +307,17 @@ final class CameraBubbleView: NSView {
         }
         let current = clipLayer.presentation() ?? clipLayer
         let bounds = CGRect(origin: .zero, size: current.bounds.size)
+        let pull = BlobPull.shared.current(at: CACurrentMediaTime())
         let path = BlobOutline.path(size: bounds.size, cornerRadius: current.cornerRadius, amount: amount,
-                                    time: BlobOutline.now)
-        blobMask.frame = bounds
-        blobMask.path = path
+                                    time: BlobOutline.now, pull: pull)
+        // The video and the mask reach past the bubble, so there's picture where the blob stretches.
+        let reach = BlobOutline.reach(for: bounds.size) * amount
+        let extended = bounds.insetBy(dx: -reach, dy: -reach)
+        previewLayer.frame = extended
+        var shift = CGAffineTransform(translationX: reach, y: reach)
+        blobMask.frame = extended
+        blobMask.path = path.copy(using: &shift)
+        clipLayer.masksToBounds = false
         clipLayer.mask = blobMask
         clipLayer.borderWidth = 0
         // The shadow takes the blob's shape; its black fill would show past the wobble.
@@ -315,6 +327,26 @@ final class CameraBubbleView: NSView {
         blobOutline.position = clipLayer.position
         blobOutline.path = path
         blobOutline.isHidden = false
+    }
+
+    /// Head tracking: leaning moves your face off the bubble's center, and the blob reaches that way.
+    /// `face` is 0…1 across and up the unmirrored frame; the preview is mirrored and fills the bubble.
+    func faceMoved(to face: CGPoint?, videoSize: CGSize) {
+        guard let face, videoSize.width > 0, videoSize.height > 0 else {
+            BlobPull.shared.target = .zero
+            return
+        }
+        let bubble = clipLayer.bounds.size
+        let scale = max(bubble.width / videoSize.width, bubble.height / videoSize.height)
+        // From the bubble's center, in points, as the (mirrored, cropped) preview shows it.
+        let dx = (0.5 - face.x) * videoSize.width * scale
+        let dy = (face.y - 0.5) * videoSize.height * scale
+        let offset = CGVector(dx: dx / (bubble.width / 2), dy: dy / (bubble.height / 2))
+        let distance = hypot(offset.dx, offset.dy)
+        // A little lean does nothing; half-way to the edge reaches all the way.
+        let strength = min(max((distance - 0.12) / 0.45, 0), 1)
+        BlobPull.shared.target = distance > 0 ? CGVector(dx: offset.dx / distance * strength,
+                                                         dy: offset.dy / distance * strength) : .zero
     }
 
     override func layout() {

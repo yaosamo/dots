@@ -6,6 +6,9 @@ final class CameraSession {
     private let queue = DispatchQueue(label: "app.dots.camera")
     private var isConfigured = false
     private var observers: [NSObjectProtocol] = []
+    /// Frames for the head tracker, delivered only while it's the delegate (see `setFrameDelegate`).
+    private let frames = AVCaptureVideoDataOutput()
+    private let framesQueue = DispatchQueue(label: "app.dots.camera.frames", qos: .userInitiated)
 
     init() {
         let center = NotificationCenter.default
@@ -44,6 +47,13 @@ final class CameraSession {
         }
     }
 
+    /// Starts or stops handing frames to `delegate` (nil stops).
+    func setFrameDelegate(_ delegate: AVCaptureVideoDataOutputSampleBufferDelegate?) {
+        queue.async {
+            self.frames.setSampleBufferDelegate(delegate, queue: delegate == nil ? nil : self.framesQueue)
+        }
+    }
+
     func stop() {
         let queuedAt = ProcessInfo.processInfo.systemUptime
         queue.async {
@@ -79,6 +89,8 @@ final class CameraSession {
         session.beginConfiguration()
         session.sessionPreset = .high
         if session.canAddInput(input) { session.addInput(input) }
+        frames.alwaysDiscardsLateVideoFrames = true
+        if session.canAddOutput(frames) { session.addOutput(frames) }
         session.commitConfiguration()
         isConfigured = true
         Log.camera.debug("Configured \(device.localizedName, privacy: .public) in \(Log.ms(since: startedAt), format: .fixed(precision: 1)) ms")

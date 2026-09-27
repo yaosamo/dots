@@ -155,6 +155,9 @@ final class CameraController: DotFeature {
     private var hasPositioned = false
 
     private(set) var isVisible = false
+    private lazy var tracker = HeadTracker { [weak self] face, size in
+        DispatchQueue.main.async { self?.bubble.faceMoved(to: face, videoSize: size) }
+    }
 
     init(onVisibilityChange: @escaping (Bool) -> Void) {
         self.onVisibilityChange = onVisibilityChange
@@ -172,6 +175,7 @@ final class CameraController: DotFeature {
         model.session.start { [weak self] in self?.model.isDenied = true }
         panel.orderFrontRegardless()
         isVisible = true
+        updateTracking()
         onVisibilityChange(true)
         Log.camera.debug("Panel shown in \(Log.ms(since: shownAt), format: .fixed(precision: 1)) ms (video appears once startRunning finishes)")
     }
@@ -180,8 +184,16 @@ final class CameraController: DotFeature {
         panel.orderOut(nil)
         model.session.stop()
         isVisible = false
+        updateTracking()
         onVisibilityChange(false)
         Log.camera.debug("Panel hidden")
+    }
+
+    /// Head tracking runs only for the blob, while the camera is open.
+    private func updateTracking() {
+        let isOn = isVisible && model.shape == .blob
+        model.session.setFrameDelegate(isOn ? tracker : nil)
+        if !isOn { BlobPull.shared.target = .zero }
     }
 
     /// Bubble 24pt from the bottom-right corner of the main screen on first show; draggable after.
@@ -207,6 +219,7 @@ final class CameraController: DotFeature {
             model.apply(shape: shape, size: size)
         }
         bubble.setBlob(shape == .blob, duration: CameraModel.morphDuration)
+        updateTracking()
         bubble.setBubble(size: model.contentSize, cornerRadius: model.cornerRadius, duration: CameraModel.morphDuration) {
             Log.camera.debug("Morph finished \(Log.ms(since: requestedAt), format: .fixed(precision: 0)) ms after request (target \(CameraModel.morphDuration * 1000, format: .fixed(precision: 0)) ms)")
         }
