@@ -76,7 +76,12 @@ final class SetupState: ObservableObject {
     }
 
     func start() {
-        after(0.05) { self.phase = .choose }
+        // The clouds lead; the dots and cards come just behind them.
+        after(max(0.05, WelcomeTuning.shared.values.cloudSetupEnterDelay)) {
+            // Cancelled before they came: they stay in the bar.
+            guard !self.isFinishing else { return }
+            self.phase = .choose
+        }
     }
 
     func toggle(_ dot: Dot) {

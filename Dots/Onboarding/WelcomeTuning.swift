@@ -62,6 +62,8 @@ final class WelcomeTuning: ObservableObject {
         var cloudDotsAt: Double = 0.5
         /// Once Done lands the dots, the clouds lift away over this.
         var cloudLeave: Double = 0.6
+        /// In dot setup (+), how long after the clouds start coming down the dots and cards follow.
+        var cloudSetupEnterDelay: Double = 0.2
         /// In dot setup (+), how long after the dots and cards start moving the clouds follow.
         var cloudSetupLeaveDelay: Double = 0.12
         /// Higher is smaller clouds.
@@ -205,6 +207,7 @@ struct WelcomeSection: Identifiable {
             WelcomeParameter(title: "Come down over", keyPath: \.cloudDescend, range: 0.5...8, unit: "s"),
             WelcomeParameter(title: "First dot at (share of come down)", keyPath: \.cloudDotsAt, range: 0...1.5),
             WelcomeParameter(title: "Lift away over", keyPath: \.cloudLeave, range: 0.1...2, unit: "s"),
+            WelcomeParameter(title: "Cards after clouds (+ menu)", keyPath: \.cloudSetupEnterDelay, range: 0...1.5, unit: "s"),
             WelcomeParameter(title: "Lift after dots (+ menu)", keyPath: \.cloudSetupLeaveDelay, range: 0...0.75, unit: "s"),
             WelcomeParameter(title: "Cloud size", keyPath: \.cloudSize, range: 0.3...5),
             WelcomeParameter(title: "Gaps", keyPath: \.cloudHoles, range: 0.2...0.8),
