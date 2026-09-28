@@ -7,5 +7,8 @@
 	     on every camera frame inside the app. People can still turn them on in Control Center. -->
 	<key>NSCameraReactionEffectGesturesEnabledDefault</key>
 	<false/>
+	<!-- No encryption beyond what macOS provides: skips the export-compliance question on upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
