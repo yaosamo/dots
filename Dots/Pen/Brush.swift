@@ -142,7 +142,7 @@ final class BrushState: ObservableObject {
 extension View {
     /// Applies the brush's Metal shader (see PenShaders.metal) to a layer of its strokes.
     /// `origin` is the layer's screen position, so noise and color stay fixed to the screen as the layer grows.
-    /// `tuning` supplies the Shader Lab parameters.
+    /// `tuning` supplies the shader parameters.
     @ViewBuilder
     func brushEffect(_ brush: Brush, time: Float, origin: CGPoint, tuning: ShaderTuning.Values) -> some View {
         let time = Shader.Argument.float(time)

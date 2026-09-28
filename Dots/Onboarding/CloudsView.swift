@@ -2,38 +2,6 @@ import AppKit
 import MetalKit
 import SwiftUI
 
-/// Frame rate and GPU time of the welcome's clouds, shown in Welcome Lab while they play.
-@MainActor
-final class CloudStats: ObservableObject {
-    static let shared = CloudStats()
-
-    /// Set while Welcome Lab is open; otherwise the clouds don't measure anything.
-    var isWatched = false
-
-    @Published private(set) var fps: Double = 0
-    @Published private(set) var gpuMilliseconds: Double = 0
-    /// The size the clouds are drawn at, in pixels, before being stretched to the screen.
-    @Published private(set) var drawnSize = CGSize.zero
-
-    private var frames = 0
-    private var gpuTotal: Double = 0
-    private var windowStart = CACurrentMediaTime()
-
-    /// Called once a frame; publishes averages twice a second so the readout stays calm.
-    func record(gpuSeconds: Double, drawnSize: CGSize) {
-        frames += 1
-        gpuTotal += gpuSeconds
-        let now = CACurrentMediaTime()
-        guard now - windowStart >= 0.5 else { return }
-        fps = Double(frames) / (now - windowStart)
-        gpuMilliseconds = gpuTotal / Double(frames) * 1000
-        self.drawnSize = drawnSize
-        frames = 0
-        gpuTotal = 0
-        windowStart = now
-    }
-}
-
 /// The welcome's clouds (Shaders/CloudShader.metal), drawn by Metal into a layer that's
 /// `cloudResolution` of the screen's pixels and stretched up with smooth filtering, at up to
 /// `cloudFPS`. The clouds are soft, so a small drawable barely shows and saves most of the work.
@@ -95,7 +63,7 @@ final class CloudsMetalView: MTKView, MTKViewDelegate {
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
     func draw(in view: MTKView) {
-        let values = WelcomeTuning.shared.values
+        let values = WelcomeTuning.values
         applyCost(values)
         guard let pipeline, let queue, bounds.width > 0,
               let pass = currentRenderPassDescriptor, let drawable = currentDrawable,
@@ -111,18 +79,11 @@ final class CloudsMetalView: MTKView, MTKViewDelegate {
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
 
-        if CloudStats.shared.isWatched {
-            let drawnSize = drawableSize
-            buffer.addCompletedHandler { buffer in
-                let gpu = buffer.gpuEndTime - buffer.gpuStartTime
-                DispatchQueue.main.async { CloudStats.shared.record(gpuSeconds: gpu, drawnSize: drawnSize) }
-            }
-        }
         buffer.present(drawable)
         buffer.commit()
     }
 
-    /// Resolution and frame rate follow the tuning live, so they can be tried while it plays.
+    /// Resolution and frame rate from the tuning.
     private func applyCost(_ values: WelcomeTuning.Values) {
         let fps = Int(values.cloudFPS.rounded())
         if preferredFramesPerSecond != fps { preferredFramesPerSecond = fps }

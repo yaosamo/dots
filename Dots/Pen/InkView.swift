@@ -353,7 +353,7 @@ struct InkView: View {
     @ObservedObject var brushes: BrushState
     /// Only one screen shows the whiteboard.
     let hasBoard: Bool
-    @ObservedObject private var tuning = ShaderTuning.shared
+    private let tuning = ShaderTuning.values
 
     /// False for the first frame, so a board that's already on flips in as the pen opens.
     @State private var hasAppeared = false
@@ -368,7 +368,7 @@ struct InkView: View {
                 // Outside the timeline: the dim only changes when a spotlight is added or removed.
                 SpotlightLayer(spotlights: ink.finishedSpotlights)
                     .equatable()
-                StrokeStack(strokes: ink.screenStrokes, startDate: ink.startDate, tuning: tuning.values)
+                StrokeStack(strokes: ink.screenStrokes, startDate: ink.startDate, tuning: tuning)
                     .equatable()
                 // Thin frame so it's obvious the screen is in drawing mode.
                 Rectangle()
@@ -389,7 +389,7 @@ struct InkView: View {
             // Equatable, so panning (which re-renders this view) only moves them.
             ShapeLayer(shapes: ink.shapes)
                 .equatable()
-            StrokeStack(strokes: ink.boardStrokes, startDate: ink.startDate, tuning: tuning.values)
+            StrokeStack(strokes: ink.boardStrokes, startDate: ink.startDate, tuning: tuning)
                 .equatable()
             selection
         }

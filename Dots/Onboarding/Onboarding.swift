@@ -4,11 +4,6 @@ import SwiftUI
 /// The two full-screen flows: the first-launch welcome (Welcome.swift) and dot setup behind the
 /// bar's + dot (below). Both end with the chosen dots flying into the bar, where the real bar
 /// takes over as the overlay clears.
-/// A running welcome or dot setup, which can be ended from outside.
-@MainActor
-protocol OnboardingFlow: AnyObject {
-    func cancel()
-}
 
 @MainActor
 final class OnboardingController {
@@ -16,7 +11,6 @@ final class OnboardingController {
 
     private let panel = FloatingPanel(level: DotsLevel.onboarding, keyable: true)
     private(set) var isVisible = false
-    private var flow: OnboardingFlow?
 
     /// `onReveal` gets the chosen dots as they land in the bar, before the overlay fades.
     func show(mode: Mode, enabled: Set<Dot>, onReveal: @escaping (Set<Dot>) -> Void) {
@@ -28,7 +22,6 @@ final class OnboardingController {
         switch mode {
         case .welcome:
             let state = WelcomeState()
-            flow = state
             // The welcome has to be finished with Done.
             panel.onCancel = nil
             panel.contentView = FirstClickHostingView(rootView: WelcomeView(
@@ -37,7 +30,6 @@ final class OnboardingController {
             ))
         case .setup:
             let state = SetupState(enabled: enabled)
-            flow = state
             let finish = { (apply: Bool) in state.finish(apply: apply, onReveal: onReveal, completion: close) }
             panel.onCancel = { finish(false) }
             panel.contentView = FirstClickHostingView(rootView: SetupView(
@@ -49,18 +41,9 @@ final class OnboardingController {
         panel.makeKeyAndOrderFront(nil)
     }
 
-    /// Ends a flow on the spot without applying anything (Welcome Lab's Replay and Close).
-    func dismiss() {
-        guard isVisible else { return }
-        // Its pending steps would otherwise land on whatever opens next (and apply a selection).
-        flow?.cancel()
-        close()
-    }
-
     private func close() {
         panel.orderOut(nil)
         panel.contentView = nil
-        flow = nil
         isVisible = false
     }
 }
@@ -68,7 +51,7 @@ final class OnboardingController {
 /// Dot setup: the welcome's clouds come down, the dots fly down from the bar onto a card per tool,
 /// where each can be switched on or off, then fly back up as the clouds lift away.
 @MainActor
-final class SetupState: ObservableObject, OnboardingFlow {
+final class SetupState: ObservableObject {
     /// Where the dots are: one per card, or in the bar.
     enum Phase { case choose, bar }
 
@@ -89,7 +72,7 @@ final class SetupState: ObservableObject, OnboardingFlow {
 
     func start() {
         // The clouds lead; the dots and cards come just behind them.
-        after(max(0.05, WelcomeTuning.shared.values.cloudSetupEnterDelay)) {
+        after(max(0.05, WelcomeTuning.values.cloudSetupEnterDelay)) {
             // Cancelled before they came: they stay in the bar.
             guard !self.isFinishing else { return }
             self.phase = .choose
@@ -108,7 +91,7 @@ final class SetupState: ObservableObject, OnboardingFlow {
         if !apply { selection = original }
         phase = .bar
         let landing = BarFlight.landing
-        let values = WelcomeTuning.shared.values
+        let values = WelcomeTuning.values
         // The clouds lift with the cards and dots, just behind them.
         after(values.cloudSetupLeaveDelay) { self.leftAt = Date() }
         // The real bar comes in right under the dots once they've all landed.
@@ -116,15 +99,9 @@ final class SetupState: ObservableObject, OnboardingFlow {
         after(max(landing + 0.1, values.cloudSetupLeaveDelay + values.cloudLeave) + 0.05, completion)
     }
 
-    private var isCancelled = false
-
-    func cancel() {
-        isCancelled = true
-    }
-
     private func after(_ delay: TimeInterval, _ action: @escaping () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self, !self.isCancelled else { return }
+            guard self != nil else { return }
             action()
         }
     }
@@ -177,8 +154,8 @@ struct SetupView: View {
         let top = cards.first?.minY ?? 0
         let bottom = cards.last?.maxY ?? 0
         return ZStack {
-            // The welcome's headline and hint styles (sizes and darkness from Welcome Lab).
-            let values = WelcomeTuning.shared.values
+            // The welcome's headline and hint styles.
+            let values = WelcomeTuning.values
             VStack(spacing: 10) {
                 Text("Choose your dots")
                     .font(WelcomeView.textFont(size: values.textSize))

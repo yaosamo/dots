@@ -3,9 +3,9 @@ import SwiftUI
 
 /// The first-launch welcome: clouds come down over the screen, then the dots emerge one by one above a
 /// line of text. Clicking a dot previews its tool; Done flies the chosen dots up into the bar as the
-/// clouds lift. Every timing, size and word comes from `WelcomeTuning` (Welcome Lab, in debug builds).
+/// clouds lift. Every timing, size and word comes from `WelcomeTuning`.
 @MainActor
-final class WelcomeState: ObservableObject, OnboardingFlow {
+final class WelcomeState: ObservableObject {
     /// Floating mid-screen, or flying to / sitting in the bar.
     enum Phase { case dots, bar }
 
@@ -23,12 +23,11 @@ final class WelcomeState: ObservableObject, OnboardingFlow {
     /// When the clouds started to leave, once the dots have landed in the bar.
     @Published var leftAt: Date?
     private var isFinishing = false
-    private var isCancelled = false
 
     /// Schedules the dots, text and hint from the tuning's timings (the clouds follow the clock; see
     /// CloudFrame).
     func start() {
-        let tuning = WelcomeTuning.shared.values
+        let tuning = WelcomeTuning.values
         // The clouds don't have to finish coming down: the dots start partway through.
         let first = tuning.cloudDescend * tuning.cloudDotsAt
         for index in Dot.allCases.indices {
@@ -61,18 +60,12 @@ final class WelcomeState: ObservableObject, OnboardingFlow {
         // The real bar comes in right under the dots once they've all landed.
         after(landing) { onReveal(self.selection) }
         // Once the bar is there under them and the clouds have lifted.
-        after(max(landing + 0.1, WelcomeTuning.shared.values.cloudLeave) + 0.05, completion)
-    }
-
-    /// Ended from outside (Welcome Lab's Replay or Close): nothing scheduled runs, and the camera stops.
-    func cancel() {
-        isCancelled = true
-        camera.stop()
+        after(max(landing + 0.1, WelcomeTuning.values.cloudLeave) + 0.05, completion)
     }
 
     private func after(_ delay: TimeInterval, _ action: @escaping () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self, !self.isCancelled else { return }
+            guard self != nil else { return }
             action()
         }
     }
@@ -111,16 +104,16 @@ struct WelcomeView: View {
     let barSlots: (Int) -> [CGPoint]
     let onDone: () -> Void
 
-    @ObservedObject private var tuning = WelcomeTuning.shared
+    private let tuning = WelcomeTuning.values
     /// Different clouds each time.
     @State private var seed = Float.random(in: 0...50)
 
-    private var dotSize: CGFloat { tuning.values.dotSize }
+    private var dotSize: CGFloat { tuning.dotSize }
 
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
-            let center = CGPoint(x: size.width / 2, y: size.height / 2 + tuning.values.dotsOffsetY)
+            let center = CGPoint(x: size.width / 2, y: size.height / 2 + tuning.dotsOffsetY)
             ZStack {
                 CloudsView(startDate: state.startDate, leftAt: state.leftAt, seed: seed)
                 caption(below: center)
@@ -145,7 +138,7 @@ struct WelcomeView: View {
     /// Hangs from just below the dots, so longer text grows downward.
     private func caption(below center: CGPoint) -> some View {
         let isShown = state.phase == .dots && state.isTextShown
-        let values = tuning.values
+        let values = tuning
         let top = center.y + dotSize / 2 + values.textGap
         let slot: CGFloat = 800
         return VStack(spacing: 10) {
@@ -239,7 +232,7 @@ struct WelcomeView: View {
         .animation(.easeOut(duration: 0.2), value: state.selection)
         .animation(BarFlight.animation(index: index), value: state.phase)
         // Emerging: out of focus and faint to crisp, in its own place.
-        .animation(.easeOut(duration: tuning.values.dotEmerge), value: state.shownDots)
+        .animation(.easeOut(duration: tuning.dotEmerge), value: state.shownDots)
         .position(placement.center)
     }
 
@@ -269,11 +262,11 @@ struct WelcomeView: View {
         switch state.phase {
         case .dots:
             let offset = CGFloat(index) - CGFloat(Dot.allCases.count - 1) / 2
-            let spot = CGPoint(x: center.x + offset * tuning.values.dotSpacing, y: center.y)
+            let spot = CGPoint(x: center.x + offset * tuning.dotSpacing, y: center.y)
             // Until its turn, each dot waits in its place, blurred into the background.
             guard index < state.shownDots else {
-                return Placement(center: spot, diameter: dotSize, scale: tuning.values.dotStartScale,
-                                 opacity: 0, blur: tuning.values.dotBlur)
+                return Placement(center: spot, diameter: dotSize, scale: tuning.dotStartScale,
+                                 opacity: 0, blur: tuning.dotBlur)
             }
             return Placement(center: spot, diameter: dotSize)
         case .bar:

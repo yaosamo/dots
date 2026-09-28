@@ -2,7 +2,7 @@
 
 A macOS menu-bar-style utility: dots float at the top of the screen, each one a tool.
 
-**First launch:** clouds come down over the screen, then the dots appear one by one; click a dot to preview its tool and switch it on or off, and **Done** flies the chosen dots into the bar as the clouds lift. While some tools are off, the bar ends in a **+** dot that opens the same choice over the clouds (**Esc** cancels). **Choose Dots…** in the menu bar menu does too, and **Show Welcome** replays the intro. In debug builds the menu also has **Shader Lab…** and **Welcome Lab…**: a slider for every shader and welcome value (timings, clouds and what they cost, dots, text), with **Replay**, **Copy** (the values as a Swift literal to paste in as new defaults) and **Reset**. Release builds always use the defaults.
+**First launch:** clouds come down over the screen, then the dots appear one by one; click a dot to preview its tool and switch it on or off, and **Done** flies the chosen dots into the bar as the clouds lift. While some tools are off, the bar ends in a **+** dot that opens the same choice over the clouds (**Esc** cancels). **Choose Dots…** in the menu bar menu does too, and **Show Welcome** replays the intro. Every shader and welcome value lives in `ShaderTuning` and `WelcomeTuning`; the live-tuning labs (Shader Lab, Welcome Lab) are on the `dev` branch.
 
 | Dot | Shortcut | Colour when on | What it does |
 |-----|----------|----------------|--------------|
@@ -32,11 +32,11 @@ Requires macOS 14+. The pen shaders need Xcode's Metal Toolchain (`xcodebuild -d
 
 ```
 Dots/
-  App/     DotsApp, DotsCoordinator (dot state + toggling), FloatingPanel (window levels, panel base), HotKeys, Log, Lab (debug-only tuning windows)
+  App/     DotsApp, DotsCoordinator (dot state + toggling), FloatingPanel (window levels, panel base), HotKeys, Log
   Bar/     Top dot bar, menu bar icon
   Camera/  AVCaptureSession wrapper, floating panel, Core Animation bubble + SwiftUI controls
   Tasks/   TaskStore (JSON persistence), full-screen overlay
-  Onboarding/ Welcome and dot setup over the clouds (CloudsView), DotSettings (enabled dots), Welcome Lab
+  Onboarding/ Welcome and dot setup over the clouds (CloudsView), DotSettings (enabled dots), WelcomeTuning
   Timer/   Dice timer
   Clipboard/ Clipboard history
   Pen/     Per-screen drawing canvas, brushes, whiteboard tools (Board), pen cursors

@@ -43,17 +43,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.addItem(choose)
         menu.addItem(.separator())
 
-        #if DEBUG
-        // Developer tools; not in release builds.
-        let shaderLab = NSMenuItem(title: "Shader Lab…", action: #selector(showShaderLab), keyEquivalent: "")
-        shaderLab.target = self
-        menu.addItem(shaderLab)
-
-        let welcomeLab = NSMenuItem(title: "Welcome Lab…", action: #selector(showWelcomeLab), keyEquivalent: "")
-        welcomeLab.target = self
-        menu.addItem(welcomeLab)
-        #endif
-
         let welcome = NSMenuItem(title: "Show Welcome", action: #selector(showWelcome), keyEquivalent: "")
         welcome.target = self
         menu.addItem(welcome)
@@ -81,16 +70,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     @objc private func showWelcome() {
         coordinator.showWelcome()
     }
-
-    #if DEBUG
-    @objc private func showWelcomeLab() {
-        coordinator.showWelcomeLab()
-    }
-
-    @objc private func showShaderLab() {
-        coordinator.showShaderLab()
-    }
-    #endif
 
     @objc private func toggleAlwaysDarkTasks() {
         TaskAppearance.isAlwaysDark.toggle()

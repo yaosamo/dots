@@ -191,9 +191,9 @@ struct TaskOverlayView: View {
     // Entering: frost, field and the task cascade all start together.
     // Exiting plays it backwards: tasks leave bottom-up, then the field, then the frost
     // clears from the edges into the middle.
-    /// Frost timings (Shader Lab). Everything else is timed around them.
-    private static var frostInDuration: TimeInterval { ShaderTuning.shared.values.frostInDuration }
-    private static var frostOutDuration: TimeInterval { ShaderTuning.shared.values.frostOutDuration }
+    /// Frost timings (ShaderTuning). Everything else is timed around them.
+    private static var frostInDuration: TimeInterval { ShaderTuning.values.frostInDuration }
+    private static var frostOutDuration: TimeInterval { ShaderTuning.values.frostOutDuration }
     /// When closing, the frost starts clearing once the tasks and field are on their way out.
     private static let frostOutDelay: TimeInterval = 0.12
 
@@ -609,7 +609,7 @@ struct FrostSweep: View, Animatable {
     @State private var seed = Float.random(in: 0...100)
 
     var body: some View {
-        let tuning = ShaderTuning.shared.values
+        let tuning = ShaderTuning.values
         GeometryReader { geometry in
             Rectangle()
                 .fill(.black)

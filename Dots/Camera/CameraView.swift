@@ -123,11 +123,11 @@ private struct EffectRim: View {
     /// 0…1 into the blob; animates with the morph.
     let blob: CGFloat
 
-    @ObservedObject private var tuning = ShaderTuning.shared
+    private let tuning = ShaderTuning.values
     @State private var start = Date()
 
     var body: some View {
-        var values = tuning.values
+        var values = tuning
         // The pen's rainbow spans the screen; around a bubble it's tighter, so every hue shows.
         values.rainbowScale *= 3
         // The fire rages: taller, faster and wilder than the pen's (and without its bands).
