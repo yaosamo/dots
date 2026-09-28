@@ -32,6 +32,21 @@ enum DotsBarMetrics {
     }
 }
 
+/// How the welcome's and dot setup's own dots fly into the bar: a fixed-length ease-out with no
+/// overshoot, one after another, so they're known to have landed at `landing` and the real bar can
+/// take over exactly under them.
+enum BarFlight {
+    static let duration: TimeInterval = 0.6
+    static let stagger: TimeInterval = 0.05
+
+    static func animation(index: Int) -> Animation {
+        .timingCurve(0.22, 0.9, 0.3, 1, duration: duration).delay(Double(index) * stagger)
+    }
+
+    /// When the last dot has landed.
+    static var landing: TimeInterval { duration + Double(Dot.allCases.count - 1) * stagger }
+}
+
 @MainActor
 final class DotsBarController {
     private let panel = FloatingPanel(level: DotsLevel.bar, keyable: false)
@@ -56,20 +71,33 @@ final class DotsBarController {
     /// `dropIn`: the dots fall in one after another (at launch). Otherwise they're simply there,
     /// e.g. after the welcome, whose own dots have just landed in their places.
     func show(dropIn: Bool = false) {
-        position()
+        position(reachingTop: dropIn)
         if dropIn { entrance.hasLanded = false }
         panel.orderFrontRegardless()
-        // Next pass, so the first frame draws them above the bar and the fall animates.
-        if dropIn { DispatchQueue.main.async { self.entrance.hasLanded = true } }
+        guard dropIn else { return }
+        // Next pass, so the first frame draws them above the screen and the fall animates.
+        DispatchQueue.main.async { self.entrance.hasLanded = true }
+        // Back to the bar's own size once the last one has landed, clear of the menu bar.
+        DispatchQueue.main.asyncAfter(deadline: .now() + DropIn.settled(slots: settings.barSlots)) {
+            self.position()
+        }
     }
 
     func hide() {
         panel.orderOut(nil)
     }
 
-    private func position() {
+    /// `reachingTop`: for the drop-in, the panel also covers the screen above the bar (the dots stay
+    /// at its bottom), so the dots can fall from above the screen's edge without being cut off.
+    private func position(reachingTop: Bool = false) {
         guard let screen = NSScreen.primary else { return }
-        panel.setFrame(DotsBarMetrics.frame(slots: settings.barSlots, on: screen), display: true)
+        var frame = DotsBarMetrics.frame(slots: settings.barSlots, on: screen)
+        if reachingTop {
+            let above = screen.frame.maxY - frame.maxY
+            frame.size.height += above
+            entrance.startOffset = -(above + DotsBarMetrics.height / 2 + DotsBarMetrics.slot / 2)
+        }
+        panel.setFrame(frame, display: true)
     }
 }
 
@@ -77,6 +105,8 @@ final class DotsBarController {
 @MainActor
 final class BarEntrance: ObservableObject {
     @Published var hasLanded = true
+    /// Where the dots start, above their places: past the screen's top edge.
+    var startOffset: CGFloat = -DotsBarMetrics.height
 }
 
 struct DotsBarView: View {
@@ -91,11 +121,12 @@ struct DotsBarView: View {
                     DotButton(dot: dot, isActive: coordinator.active.contains(dot)) {
                         coordinator.toggle(dot)
                     }
-                    .modifier(DropIn(hasLanded: entrance.hasLanded, index: index))
+                    .modifier(DropIn(hasLanded: entrance.hasLanded, index: index, from: entrance.startOffset))
                 }
                 if settings.showsPlus {
                     PlusButton(action: coordinator.showSetup)
-                        .modifier(DropIn(hasLanded: entrance.hasLanded, index: settings.enabled.count))
+                        .modifier(DropIn(hasLanded: entrance.hasLanded, index: settings.enabled.count,
+                                         from: entrance.startOffset))
                 }
             }
         }
@@ -103,7 +134,10 @@ struct DotsBarView: View {
         .contextMenu {
             Button("Quit Dots") { NSApp.terminate(nil) }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .frame(height: DotsBarMetrics.height)
+        // At the bottom while the panel reaches up to the screen's top for the drop-in.
+        .frame(maxHeight: .infinity, alignment: .bottom)
         .environment(\.colorScheme, .dark)
     }
 }
@@ -171,16 +205,26 @@ private struct IconPose {
     static let landed = IconPose(offset: .zero, scale: 1, opacity: 1)
 }
 
-/// Launch cascade: each dot drops from above the bar (just under the menu bar) and bounces into
-/// place, a beat after the one before it.
+/// Launch cascade: each dot drops from above the screen's top edge and bounces into place, a beat
+/// after the one before it.
 private struct DropIn: ViewModifier {
+    private static let start: TimeInterval = 0.25
+    private static let beat: TimeInterval = 0.09
+
     let hasLanded: Bool
     let index: Int
+    /// The offset it falls from.
+    let from: CGFloat
+
+    /// When every dot of a bar with `slots` has come to rest (the spring's tail included).
+    static func settled(slots: Int) -> TimeInterval {
+        start + Double(max(slots - 1, 0)) * beat + 1.1
+    }
 
     func body(content: Content) -> some View {
         content
-            .offset(y: hasLanded ? 0 : -DotsBarMetrics.height)
-            .animation(hasLanded ? .spring(response: 0.5, dampingFraction: 0.55).delay(0.25 + Double(index) * 0.09) : nil,
+            .offset(y: hasLanded ? 0 : from)
+            .animation(hasLanded ? .spring(response: 0.5, dampingFraction: 0.55).delay(Self.start + Double(index) * Self.beat) : nil,
                        value: hasLanded)
     }
 }

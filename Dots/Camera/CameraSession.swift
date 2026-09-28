@@ -6,6 +6,31 @@ final class CameraSession {
     private let queue = DispatchQueue(label: "app.dots.camera")
     private var isConfigured = false
     private var observers: [NSObjectProtocol] = []
+    /// Frames for the head tracker. Only attached to the session while tracking: attached, it has the
+    /// camera deliver (and convert) every frame, which costs CPU even with no delegate.
+    private let frames: AVCaptureVideoDataOutput = {
+        let output = AVCaptureVideoDataOutput()
+        output.alwaysDiscardsLateVideoFrames = true
+        return output
+    }()
+
+    /// The camera's own pixel format, so frames aren't converted, and small (640 wide): tracking a
+    /// head or hand needs no more, and the camera scales them for free. The height keeps the camera's
+    /// own aspect, which the blob and the pull work out from the frames they're given.
+    private func trackingSettings() -> [String: Any] {
+        var aspect: CGFloat = 16 / 9
+        if let input = session.inputs.compactMap({ $0 as? AVCaptureDeviceInput }).first {
+            let size = CMVideoFormatDescriptionGetDimensions(input.device.activeFormat.formatDescription)
+            if size.width > 0, size.height > 0 { aspect = CGFloat(size.width) / CGFloat(size.height) }
+        }
+        let height = Int((640 / aspect / 2).rounded()) * 2
+        return [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+            kCVPixelBufferWidthKey as String: 640,
+            kCVPixelBufferHeightKey as String: height,
+        ]
+    }
+    private let framesQueue = DispatchQueue(label: "app.dots.camera.frames", qos: .userInitiated)
 
     init() {
         let center = NotificationCenter.default
@@ -44,6 +69,30 @@ final class CameraSession {
         }
     }
 
+    /// Starts or stops handing frames to `delegate` (nil stops), attaching the frames output only
+    /// while there's one.
+    func setFrameDelegate(_ delegate: AVCaptureVideoDataOutputSampleBufferDelegate?) {
+        queue.async {
+            let isAttached = self.session.outputs.contains(self.frames)
+            if let delegate {
+                self.frames.videoSettings = self.trackingSettings()
+                if !isAttached, self.session.canAddOutput(self.frames) {
+                    self.session.beginConfiguration()
+                    self.session.addOutput(self.frames)
+                    self.session.commitConfiguration()
+                }
+                self.frames.setSampleBufferDelegate(delegate, queue: self.framesQueue)
+            } else {
+                self.frames.setSampleBufferDelegate(nil, queue: nil)
+                if isAttached {
+                    self.session.beginConfiguration()
+                    self.session.removeOutput(self.frames)
+                    self.session.commitConfiguration()
+                }
+            }
+        }
+    }
+
     func stop() {
         let queuedAt = ProcessInfo.processInfo.systemUptime
         queue.async {
@@ -69,6 +118,10 @@ final class CameraSession {
 
     private func configure() {
         let startedAt = ProcessInfo.processInfo.systemUptime
+        // Center Stage follows your face and body on every frame, inside the app (a big share of the
+        // camera's CPU); a little selfie bubble doesn't need it, so Dots turns it off for itself.
+        AVCaptureDevice.centerStageControlMode = .app
+        AVCaptureDevice.isCenterStageEnabled = false
         let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .unspecified)
             ?? AVCaptureDevice.default(for: .video)
         guard let device, let input = try? AVCaptureDeviceInput(device: device) else {
@@ -77,7 +130,8 @@ final class CameraSession {
         }
 
         session.beginConfiguration()
-        session.sessionPreset = .high
+        // 720p: plenty for even the biggest bubble (640 px wide on Retina), and half 1080p's pixels.
+        session.sessionPreset = session.canSetSessionPreset(.hd1280x720) ? .hd1280x720 : .high
         if session.canAddInput(input) { session.addInput(input) }
         session.commitConfiguration()
         isConfigured = true

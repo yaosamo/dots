@@ -3,7 +3,71 @@ import SwiftUI
 
 @MainActor
 final class CameraModel: ObservableObject {
-    enum Shape: String { case circle, portrait }
+    /// The shape button steps circle → portrait → blob, then back to circle.
+    enum Shape: String, CaseIterable {
+        case circle, portrait, blob
+
+        var next: Shape {
+            let all = Shape.allCases
+            return all[(all.firstIndex(of: self)! + 1) % all.count]
+        }
+
+        var symbol: String {
+            switch self {
+            case .circle: "circle"
+            case .portrait: "rectangle.portrait"
+            case .blob: "drop"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .circle: "Circle"
+            case .portrait: "Portrait rectangle"
+            case .blob: "Blob"
+            }
+        }
+    }
+
+    /// One of the pen's shader brushes around the bubble's edge, or none.
+    enum Effect: String, CaseIterable {
+        case none, electric, fire, rainbow, cloud
+
+        var brush: Brush? {
+            switch self {
+            case .none: nil
+            case .electric: .electric
+            case .fire: .fire
+            case .rainbow: .rainbow
+            case .cloud: nil
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .none: "sparkles"
+            case .electric: "bolt.fill"
+            case .fire: "flame.fill"
+            case .rainbow: "rainbow"
+            case .cloud: "cloud.fill"
+            }
+        }
+
+        var help: String {
+            switch self {
+            case .none: "Effect: none"
+            case .electric: "Effect: electric"
+            case .fire: "Effect: fire"
+            case .rainbow: "Effect: rainbow"
+            case .cloud: "Effect: cloud"
+            }
+        }
+
+        var next: Effect {
+            let all = Effect.allCases
+            return all[(all.firstIndex(of: self)! + 1) % all.count]
+        }
+    }
 
     /// The expand button steps small → medium → large, then back to small.
     enum Size: String, CaseIterable {
@@ -23,7 +87,9 @@ final class CameraModel: ObservableObject {
         }
     }
 
-    static let padding: CGFloat = 12
+    /// Room around the biggest bubble for its effect's glow and flames (the fire's are tallest).
+    static let padding: CGFloat = 64
+    private static let effectKey = "camera.effect"
 
     /// Shared by the Core Animation bubble and the SwiftUI controls so they move as one.
     static let morphDuration: TimeInterval = 0.3
@@ -35,6 +101,12 @@ final class CameraModel: ObservableObject {
     @Published private(set) var shape: Shape = .circle
     @Published private(set) var size: Size = .small
     @Published var isDenied = false
+    /// Whether the camera is on screen: the effect rim only animates while it is (a hidden window's
+    /// SwiftUI animations keep running otherwise).
+    @Published var isShown = false
+    @Published private(set) var effect = Effect(rawValue: UserDefaults.standard.string(forKey: effectKey) ?? "") ?? .none {
+        didSet { UserDefaults.standard.set(effect.rawValue, forKey: Self.effectKey) }
+    }
 
     let session = CameraSession()
     var onClose: (() -> Void)?
@@ -44,7 +116,8 @@ final class CameraModel: ObservableObject {
     var cornerRadius: CGFloat { Self.cornerRadius(shape: shape, size: size) }
 
     func stepSize() { onLayoutRequest?(shape, size.next) }
-    func toggleShape() { onLayoutRequest?(shape == .circle ? .portrait : .circle, size) }
+    func toggleShape() { onLayoutRequest?(shape.next, size) }
+    func stepEffect() { effect = effect.next }
 
     /// Only the controller applies layout, so the bubble and controls animate together.
     fileprivate func apply(shape: Shape, size: Size) {
@@ -55,7 +128,7 @@ final class CameraModel: ObservableObject {
     static func contentSize(shape: Shape, size: Size) -> CGSize {
         let scale = size.scale
         switch shape {
-        case .circle: return CGSize(width: 160 * scale, height: 160 * scale)
+        case .circle, .blob: return CGSize(width: 160 * scale, height: 160 * scale)
         case .portrait: return CGSize(width: 150 * scale, height: 200 * scale)
         }
     }
@@ -63,7 +136,7 @@ final class CameraModel: ObservableObject {
     /// A circle is a rounded rectangle whose radius is half its side — which is what lets it morph.
     static func cornerRadius(shape: Shape, size: Size) -> CGFloat {
         switch shape {
-        case .circle: return contentSize(shape: shape, size: size).width / 2
+        case .circle, .blob: return contentSize(shape: shape, size: size).width / 2
         case .portrait: return 20 * (size.scale + 1) / 2 // 20, 25, 30
         }
     }
@@ -71,7 +144,7 @@ final class CameraModel: ObservableObject {
     /// The window stays this size — big enough for every bubble — and never resizes, so nothing
     /// in it gets re-laid out mid-morph. Its transparent margin lets clicks through to what's below.
     static let windowSize: CGSize = {
-        let sizes = [Shape.circle, .portrait].flatMap { shape in
+        let sizes = Shape.allCases.flatMap { shape in
             Size.allCases.map { contentSize(shape: shape, size: $0) }
         }
         return CGSize(width: sizes.map(\.width).max()! + padding * 2,
@@ -88,6 +161,9 @@ final class CameraController: DotFeature {
     private var hasPositioned = false
 
     private(set) var isVisible = false
+    private lazy var tracker = HeadTracker(onTarget: { [weak self] point, size in
+        DispatchQueue.main.async { self?.bubble.trackedMoved(to: point, videoSize: size) }
+    })
 
     init(onVisibilityChange: @escaping (Bool) -> Void) {
         self.onVisibilityChange = onVisibilityChange
@@ -105,6 +181,9 @@ final class CameraController: DotFeature {
         model.session.start { [weak self] in self?.model.isDenied = true }
         panel.orderFrontRegardless()
         isVisible = true
+        model.isShown = true
+        bubble.setBlob(model.shape == .blob, duration: 0)
+        updateTracking()
         onVisibilityChange(true)
         Log.camera.debug("Panel shown in \(Log.ms(since: shownAt), format: .fixed(precision: 1)) ms (video appears once startRunning finishes)")
     }
@@ -113,8 +192,17 @@ final class CameraController: DotFeature {
         panel.orderOut(nil)
         model.session.stop()
         isVisible = false
+        model.isShown = false
+        updateTracking()
         onVisibilityChange(false)
         Log.camera.debug("Panel hidden")
+    }
+
+    /// Head and hand tracking run only for the blob, while the camera is open.
+    private func updateTracking() {
+        let isOn = isVisible && model.shape == .blob
+        model.session.setFrameDelegate(isOn ? tracker : nil)
+        if !isOn { BlobPull.shared.target = .zero }
     }
 
     /// Bubble 24pt from the bottom-right corner of the main screen on first show; draggable after.
@@ -139,6 +227,8 @@ final class CameraController: DotFeature {
         withAnimation(CameraModel.morphAnimation) {
             model.apply(shape: shape, size: size)
         }
+        bubble.setBlob(shape == .blob, duration: CameraModel.morphDuration)
+        updateTracking()
         bubble.setBubble(size: model.contentSize, cornerRadius: model.cornerRadius, duration: CameraModel.morphDuration) {
             Log.camera.debug("Morph finished \(Log.ms(since: requestedAt), format: .fixed(precision: 0)) ms after request (target \(CameraModel.morphDuration * 1000, format: .fixed(precision: 0)) ms)")
         }

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Live-tweakable shader and transition parameters, edited in Shader Lab (menu bar menu).
+/// Live-tweakable shader and transition parameters, edited in Shader Lab (menu bar menu, debug builds).
 /// Values persist between launches. Shader Lab's "Copy" produces a `Values(...)` literal; paste it
 /// over the defaults below to make a tuning permanent.
 @MainActor
@@ -32,9 +32,14 @@ final class ShaderTuning: ObservableObject {
     }
 
     private init() {
+        #if DEBUG
         // A saved tuning from an older set of fields fails to decode; fall back to the defaults.
         values = UserDefaults.standard.data(forKey: Self.defaultsKey)
             .flatMap { try? JSONDecoder().decode(Values.self, from: $0) } ?? Values()
+        #else
+        // Releases always use the defaults below: the labs, which change them, are debug-only.
+        values = Values()
+        #endif
     }
 
     func reset() {
@@ -60,45 +65,32 @@ final class ShaderTuning: ObservableObject {
     }
 }
 
-/// One slider in Shader Lab.
-struct TuningParameter: Identifiable {
-    let title: String
-    let keyPath: WritableKeyPath<ShaderTuning.Values, Double>
-    let range: ClosedRange<Double>
-    var step: Double?
-    var unit = ""
-
-    var id: String { title }
-}
-
-struct TuningSection: Identifiable {
-    let title: String
-    let parameters: [TuningParameter]
-
-    var id: String { title }
-
-    static let all: [TuningSection] = [
-        TuningSection(title: "Tasks frost", parameters: [
-            TuningParameter(title: "Blotch size", keyPath: \.frostScale, range: 40...600, unit: "pt"),
-            TuningParameter(title: "Octaves (detail)", keyPath: \.frostOctaves, range: 1...8, step: 1),
-            TuningParameter(title: "Softness", keyPath: \.frostSoft, range: 0.02...0.5),
-            TuningParameter(title: "Edge bias", keyPath: \.frostEdgeBias, range: 0...1),
-            TuningParameter(title: "Open duration", keyPath: \.frostInDuration, range: 0.1...3, unit: "s"),
-            TuningParameter(title: "Close duration", keyPath: \.frostOutDuration, range: 0.1...3, unit: "s"),
+#if DEBUG
+/// Shader Lab's sliders, section by section.
+enum ShaderLabSections {
+    static let all: [LabSection<ShaderTuning.Values>] = [
+        LabSection(title: "Tasks frost", parameters: [
+            LabParameter(title: "Blotch size", keyPath: \.frostScale, range: 40...600, unit: "pt"),
+            LabParameter(title: "Octaves (detail)", keyPath: \.frostOctaves, range: 1...8, step: 1),
+            LabParameter(title: "Softness", keyPath: \.frostSoft, range: 0.02...0.5),
+            LabParameter(title: "Edge bias", keyPath: \.frostEdgeBias, range: 0...1),
+            LabParameter(title: "Open duration", keyPath: \.frostInDuration, range: 0.1...3, unit: "s"),
+            LabParameter(title: "Close duration", keyPath: \.frostOutDuration, range: 0.1...3, unit: "s"),
         ]),
-        TuningSection(title: "Electric", parameters: [
-            TuningParameter(title: "Jitter", keyPath: \.electricJitter, range: 0...30, unit: "pt"),
-            TuningParameter(title: "Crackle rate", keyPath: \.electricRate, range: 1...40, unit: "/s"),
-            TuningParameter(title: "Glow radius", keyPath: \.electricGlow, range: 2...24, unit: "pt"),
+        LabSection(title: "Electric", parameters: [
+            LabParameter(title: "Jitter", keyPath: \.electricJitter, range: 0...30, unit: "pt"),
+            LabParameter(title: "Crackle rate", keyPath: \.electricRate, range: 1...40, unit: "/s"),
+            LabParameter(title: "Glow radius", keyPath: \.electricGlow, range: 2...24, unit: "pt"),
         ]),
-        TuningSection(title: "Fire", parameters: [
-            TuningParameter(title: "Flame height", keyPath: \.fireHeight, range: 5...80, unit: "pt"),
-            TuningParameter(title: "Rise speed", keyPath: \.fireSpeed, range: 0...8),
-            TuningParameter(title: "Wobble", keyPath: \.fireWobble, range: 0...30, unit: "pt"),
+        LabSection(title: "Fire", parameters: [
+            LabParameter(title: "Flame height", keyPath: \.fireHeight, range: 5...80, unit: "pt"),
+            LabParameter(title: "Rise speed", keyPath: \.fireSpeed, range: 0...8),
+            LabParameter(title: "Wobble", keyPath: \.fireWobble, range: 0...30, unit: "pt"),
         ]),
-        TuningSection(title: "Rainbow", parameters: [
-            TuningParameter(title: "Band density", keyPath: \.rainbowScale, range: 0.2...6),
-            TuningParameter(title: "Drift speed", keyPath: \.rainbowSpeed, range: 0...2),
+        LabSection(title: "Rainbow", parameters: [
+            LabParameter(title: "Band density", keyPath: \.rainbowScale, range: 0.2...6),
+            LabParameter(title: "Drift speed", keyPath: \.rainbowSpeed, range: 0...2),
         ]),
     ]
 }
+#endif
