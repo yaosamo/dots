@@ -14,7 +14,7 @@ enum PenCursor {
         if state.isPointer { return .arrow }
         return switch state.boardTool {
         case nil: cursor(for: state.brush)
-        case .marker: cursor(key: "board.\(state.boardColor.rawValue)", color: state.boardColor.nsColor)
+        case .marker: cursor(key: "board.\(state.boardColor.rawValue).\(DotsAppearance.isAlwaysDark)", color: state.boardColor.nsColor)
         case .select: .arrow
         case .hand: .openHand
         case .text: .iBeam

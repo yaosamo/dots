@@ -4,11 +4,13 @@ import SwiftUI
 
 /// Dot 4: a countdown on a real 3D die. It drops in, bounces off the screen's edges and rolls to a
 /// stop on its bottom edge; toss it by dragging and letting go. Click it to start or pause; hover
-/// for −/+ a minute and reset. When time's up it chimes and hops once.
+/// for −/+ a minute, reset and ✕ (put it away), or click the time to type one. When time's up it
+/// chimes and hops once.
 @MainActor
 final class DiceTimerModel: ObservableObject {
     private static let durationKey = "timer.duration"
     static let minute: TimeInterval = 60
+    static let longest: TimeInterval = 99 * minute
 
     /// The set time, remembered between launches.
     @Published private(set) var duration: TimeInterval {
@@ -50,15 +52,40 @@ final class DiceTimerModel: ObservableObject {
         }
     }
 
-    /// ±1 minute, while not running. Between 1 and 99 minutes.
+    /// ±1 minute, while not running. Up to 99 minutes; − stops at a minute (or at a shorter typed time).
     func adjust(minutes: Int) {
         guard !isRunning else { return }
         let base = pausedRemaining ?? duration
-        let adjusted = min(max(base + Double(minutes) * Self.minute, Self.minute), 99 * Self.minute)
+        set(min(max(base + Double(minutes) * Self.minute, min(base, Self.minute)), Self.longest))
+    }
+
+    /// A typed time (see `parse`), while not running.
+    func set(_ seconds: TimeInterval) {
+        guard !isRunning else { return }
         pausedRemaining = nil
         isDone = false
-        duration = (adjusted / Self.minute).rounded() * Self.minute
+        duration = min(max(seconds.rounded(), 1), Self.longest)
     }
+
+    /// "10s", "90 sec", "2m", "1:30" or a bare number of minutes ("5", "0.5"); nil if it isn't a time.
+    static func parse(_ text: String) -> TimeInterval? {
+        let text = text.trimmingCharacters(in: .whitespaces).lowercased()
+        let parts = text.split(separator: ":", omittingEmptySubsequences: false)
+        if parts.count == 2, let minutes = Double(parts[0].isEmpty ? "0" : parts[0]), let seconds = Double(parts[1]),
+           seconds < 60 {
+            return positive(minutes * minute + seconds)
+        }
+        let number = text.prefix { $0.isNumber || $0 == "." }
+        guard let value = Double(number) else { return nil }
+        let unit = text.dropFirst(number.count).trimmingCharacters(in: .whitespaces)
+        switch unit {
+        case "", "m", "min", "mins", "minute", "minutes": return positive(value * minute)
+        case "s", "sec", "secs", "second", "seconds": return positive(value)
+        default: return nil
+        }
+    }
+
+    private static func positive(_ seconds: TimeInterval) -> TimeInterval? { seconds > 0 ? seconds : nil }
 
     func reset() {
         alarm?.cancel()
@@ -195,6 +222,7 @@ final class DiceTimerController: DotFeature {
     private static let dieCenter = CGPoint(x: windowSize.width / 2, y: dieSize / 2)
 
     private let model = DiceTimerModel()
+    /// Keyable only while the time is typed, so clicking the die never takes the keyboard.
     private let panel = FloatingPanel(level: DotsLevel.camera, keyable: false)
     private let die = DieView(frame: NSRect(origin: .zero, size: CGSize(width: dieSize, height: dieSize)))
     private let onVisibilityChange: (Bool) -> Void
@@ -214,7 +242,12 @@ final class DiceTimerController: DotFeature {
         let content = NSView(frame: NSRect(origin: .zero, size: Self.windowSize))
         die.frame.origin = CGPoint(x: (Self.windowSize.width - Self.dieSize) / 2, y: 0)
         content.addSubview(die)
-        let label = FirstClickHostingView(rootView: TimeLabel(model: model))
+        let label = FirstClickHostingView(rootView: TimeLabel(
+            model: model,
+            onEdit: { [weak self] in self?.beginTyping() },
+            onEndEdit: { [weak self] in self?.endTyping() },
+            onRemove: { [weak self] in self?.remove() }
+        ))
         label.frame = NSRect(x: 0, y: Self.labelY, width: Self.windowSize.width, height: Self.labelHeight)
         content.addSubview(label)
         panel.contentView = content
@@ -250,6 +283,28 @@ final class DiceTimerController: DotFeature {
         panel.orderOut(nil)
         isVisible = false
         onVisibilityChange(false)
+    }
+
+    /// ✕: stops the timer and puts the die away.
+    private func remove() {
+        model.reset()
+        endTyping()
+        hide()
+    }
+
+    /// Typing needs the key window, and Dots only has one while active.
+    private func beginTyping() {
+        panel.keyable = true
+        NSApp.activate()
+        panel.makeKey()
+    }
+
+    /// Hands the keyboard back to the app that had it.
+    private func endTyping() {
+        guard panel.keyable else { return }
+        panel.keyable = false
+        panel.resignKey()
+        NSApp.deactivate()
     }
 
     /// Where the die's center can go: the whole screen, edge to edge (over the Dock at the bottom),
@@ -348,23 +403,48 @@ final class DiceTimerController: DotFeature {
     }
 }
 
-/// The time above the die, with −1 minute, +1 minute and reset while hovered and not running.
+/// The time above the die. While hovered and not running: −1 minute, +1 minute and reset, and a
+/// click on the time turns it into a field to type one ("10s", "2m", "1:30"). ✕ shows on hover
+/// whenever, to put the die away.
 private struct TimeLabel: View {
     @ObservedObject var model: DiceTimerModel
+    let onEdit: () -> Void
+    let onEndEdit: () -> Void
+    let onRemove: () -> Void
+
+    @State private var draft: String?
+    @FocusState private var isFieldFocused: Bool
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.25)) { timeline in
             HStack(spacing: 2) {
                 if showsControls { control("minus") { model.adjust(minutes: -1) } }
-                Text(DiceTimerModel.format(model.remaining(at: timeline.date)))
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(model.isDone ? Color.red : Color.white.opacity(model.isRunning ? 1 : 0.75))
-                    .padding(.horizontal, 6)
+                if let draft {
+                    TextField("1:30", text: Binding(get: { draft }, set: { self.draft = $0 }))
+                        .textFieldStyle(.plain)
+                        .font(Self.font)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(DiceTimerModel.parse(draft) == nil && !draft.isEmpty ? Color.red : .white)
+                        .frame(width: 56)
+                        .focused($isFieldFocused)
+                        .onSubmit(commit)
+                        .onExitCommand { self.draft = nil; onEndEdit() }
+                        .onChange(of: isFieldFocused) { _, focused in if !focused { commit() } }
+                } else {
+                    Text(DiceTimerModel.format(model.remaining(at: timeline.date)))
+                        .font(Self.font)
+                        .monospacedDigit()
+                        .foregroundStyle(model.isDone ? Color.red : Color.white.opacity(model.isRunning ? 1 : 0.75))
+                        .padding(.horizontal, 6)
+                        .contentShape(Rectangle())
+                        .onTapGesture { if !model.isRunning { startTyping() } }
+                        .help(model.isRunning ? "" : "Click to type a time, like 10s, 2m or 1:30")
+                }
                 if showsControls {
                     control("plus") { model.adjust(minutes: 1) }
                     control("arrow.counterclockwise") { model.reset() }
                 }
+                if model.isHovering || draft != nil { control("xmark", action: onRemove) }
             }
             .padding(.horizontal, 6)
             .frame(height: 26)
@@ -375,7 +455,23 @@ private struct TimeLabel: View {
         .onHover { hovering in withAnimation(.easeOut(duration: 0.15)) { model.isHovering = hovering } }
     }
 
-    private var showsControls: Bool { model.isHovering && !model.isRunning }
+    private static let font = Font.system(size: 14, weight: .semibold, design: .rounded)
+
+    private var showsControls: Bool { model.isHovering && !model.isRunning && draft == nil }
+
+    private func startTyping() {
+        onEdit()
+        draft = ""
+        isFieldFocused = true
+    }
+
+    /// Sets a valid time; anything else (or nothing) leaves the time as it was.
+    private func commit() {
+        guard let text = draft else { return }
+        draft = nil
+        if let seconds = DiceTimerModel.parse(text) { model.set(seconds) }
+        onEndEdit()
+    }
 
     private func control(_ symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {

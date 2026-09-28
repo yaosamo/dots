@@ -25,6 +25,7 @@ final class ClipboardController: DotFeature {
         guard !isVisible, let screen = NSScreen.underMouse else { return }
         history.refresh()
         panel.setFrame(screen.frame, display: false)
+        panel.appearance = DotsAppearance.panelAppearance
         // Fresh each time, so the frost and the cards' entrance replay.
         let state = ClipboardOverlayState()
         self.state = state

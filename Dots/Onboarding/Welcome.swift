@@ -502,31 +502,44 @@ private struct TimerDemo: View {
 private struct ClipboardDemo: View {
     private static let copies = ["dots.app/welcome", "Meeting moved to 3pm", "#FF6B6B", "Thanks, Sam!"]
     private static let step: TimeInterval = 1.1
+    private static let rowHeight: CGFloat = 30
+    private static let spacing: CGFloat = 6
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: Self.step)) { timeline in
             let tick = Int(timeline.date.timeIntervalSinceReferenceDate / Self.step) % (Self.copies.count + 2)
             let shown = Array(Self.copies.prefix(min(tick + 1, Self.copies.count)).reversed().prefix(3))
-            VStack(spacing: 6) {
-                ForEach(Array(shown.enumerated()), id: \.element) { index, copy in
-                    HStack(spacing: 8) {
+            // The numbers belong to the slots, not the copies: they stay put while copies slide
+            // down past them.
+            ZStack(alignment: .topLeading) {
+                VStack(spacing: Self.spacing) {
+                    ForEach(shown, id: \.self) { copy in
+                        Text(copy)
+                            .font(.system(size: 13))
+                            .lineLimit(1)
+                            .padding(.leading, 34)
+                            .padding(.trailing, 10)
+                            .frame(maxWidth: .infinity, minHeight: Self.rowHeight, maxHeight: Self.rowHeight, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.white.opacity(0.85)))
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    Spacer(minLength: 0)
+                }
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: shown)
+                VStack(spacing: Self.spacing) {
+                    ForEach(0..<shown.count, id: \.self) { index in
                         Text("\(index + 1)")
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
                             .foregroundStyle(.secondary)
                             .frame(width: 16, height: 16)
                             .background(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.black.opacity(0.2)))
-                        Text(copy).font(.system(size: 13)).lineLimit(1)
-                        Spacer()
+                            .frame(height: Self.rowHeight)
+                            .padding(.leading, 10)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.white.opacity(0.85)))
-                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                Spacer(minLength: 0)
+                .animation(.easeOut(duration: 0.25), value: shown.count)
             }
             .padding(12)
-            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: shown)
         }
         .background(DemoBackdrop())
     }

@@ -67,7 +67,8 @@ enum BoardTool: String, CaseIterable, Identifiable {
     }
 }
 
-/// Excalidraw's default stroke colors, used by the marker, shapes and text.
+/// Excalidraw's default stroke colors, used by the marker, shapes and text. Black is near-white on
+/// the dark board (Always Dark Mode), as in Excalidraw's dark theme.
 enum BoardColor: String, CaseIterable, Identifiable, Codable {
     case black, red, green, blue, orange
 
@@ -75,7 +76,9 @@ enum BoardColor: String, CaseIterable, Identifiable, Codable {
 
     var nsColor: NSColor {
         switch self {
-        case .black: NSColor(red: 0x1e / 255, green: 0x1e / 255, blue: 0x1e / 255, alpha: 1)
+        case .black: DotsAppearance.isAlwaysDark
+            ? NSColor(red: 0xe3 / 255, green: 0xe3 / 255, blue: 0xe3 / 255, alpha: 1)
+            : NSColor(red: 0x1e / 255, green: 0x1e / 255, blue: 0x1e / 255, alpha: 1)
         case .red: NSColor(red: 0xe0 / 255, green: 0x31 / 255, blue: 0x31 / 255, alpha: 1)
         case .green: NSColor(red: 0x2f / 255, green: 0x9e / 255, blue: 0x44 / 255, alpha: 1)
         case .blue: NSColor(red: 0x19 / 255, green: 0x71 / 255, blue: 0xc2 / 255, alpha: 1)
@@ -223,6 +226,11 @@ struct BoardToolbar: View {
     /// For the clear button: enabled only while the board has something on it.
     @ObservedObject var ink: InkModel
 
+    private let isDark = DotsAppearance.isAlwaysDark
+    private var iconColor: Color { Color(white: isDark ? 0.85 : 0.2) }
+    /// Dividers and the clear button's fill.
+    private var faint: Color { isDark ? .white : .black }
+
     var body: some View {
         HStack(spacing: Metrics.spacing) {
             ForEach(BoardTool.allCases) { tool in
@@ -231,7 +239,7 @@ struct BoardToolbar: View {
                 Button { if isSelected { brushes.isPointer = true } else { brushes.boardTool = tool } } label: {
                     Image(systemName: tool.symbol)
                         .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(isSelected ? Self.accent : Color(white: 0.2))
+                        .foregroundStyle(isSelected ? Self.accent : iconColor)
                         .frame(width: Metrics.cell, height: Metrics.cell)
                         .background(
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -267,9 +275,9 @@ struct BoardToolbar: View {
             Button { ink.clearBoard() } label: {
                 Label("Clear board", systemImage: "trash")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color(white: 0.2))
+                    .foregroundStyle(iconColor)
                     .frame(width: Metrics.clearWidth, height: Metrics.cell)
-                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.black.opacity(0.05)))
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(faint.opacity(0.05)))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -281,19 +289,19 @@ struct BoardToolbar: View {
         .frame(width: Self.size.width, height: Self.size.height)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.white)
-                .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+                .fill(isDark ? Whiteboard.darkFill : .white)
+                .shadow(color: .black.opacity(isDark ? 0.4 : 0.12), radius: 8, y: 2)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.black.opacity(0.06))
+                .strokeBorder(faint.opacity(isDark ? 0.1 : 0.06))
         )
-        .environment(\.colorScheme, .light)
+        .environment(\.colorScheme, isDark ? .dark : .light)
     }
 
     private var divider: some View {
         Rectangle()
-            .fill(Color.black.opacity(0.1))
+            .fill(faint.opacity(0.1))
             .frame(width: Metrics.divider, height: Metrics.cell - 12)
     }
 }

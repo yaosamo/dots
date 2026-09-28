@@ -47,9 +47,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         welcome.target = self
         menu.addItem(welcome)
 
-        let alwaysDark = NSMenuItem(title: "Always Dark Tasks", action: #selector(toggleAlwaysDarkTasks), keyEquivalent: "")
+        let alwaysDark = NSMenuItem(title: "Always Dark Mode", action: #selector(toggleAlwaysDark), keyEquivalent: "")
         alwaysDark.target = self
-        alwaysDark.state = TaskAppearance.isAlwaysDark ? .on : .off
+        alwaysDark.state = DotsAppearance.isAlwaysDark ? .on : .off
         menu.addItem(alwaysDark)
         menu.addItem(.separator())
 
@@ -71,8 +71,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         coordinator.showWelcome()
     }
 
-    @objc private func toggleAlwaysDarkTasks() {
-        TaskAppearance.isAlwaysDark.toggle()
+    @objc private func toggleAlwaysDark() {
+        DotsAppearance.isAlwaysDark.toggle()
     }
 
     @objc private func showAbout() {

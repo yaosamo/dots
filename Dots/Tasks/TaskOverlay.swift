@@ -21,8 +21,7 @@ final class TaskOverlayController: DotFeature {
     func show() {
         guard !isVisible, let screen = NSScreen.underMouse else { return }
         panel.setFrame(screen.frame, display: false)
-        // nil follows the system's light/dark appearance.
-        panel.appearance = TaskAppearance.isAlwaysDark ? NSAppearance(named: .darkAqua) : nil
+        panel.appearance = DotsAppearance.panelAppearance
         // Fresh view and selection each time: focus starts in "Add a task…" and the reveal replays.
         let state = TaskListState(store: store)
         self.state = state
@@ -61,16 +60,6 @@ final class TaskOverlayController: DotFeature {
             self.panel.contentView = nil
             self.state = nil
         }
-    }
-}
-
-/// Tasks follow the system appearance unless "Always Dark Tasks" is on (menu bar menu).
-enum TaskAppearance {
-    private static let alwaysDarkKey = "tasks.alwaysDark"
-
-    static var isAlwaysDark: Bool {
-        get { UserDefaults.standard.bool(forKey: alwaysDarkKey) }
-        set { UserDefaults.standard.set(newValue, forKey: alwaysDarkKey) }
     }
 }
 

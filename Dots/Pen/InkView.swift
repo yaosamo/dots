@@ -477,16 +477,21 @@ struct Whiteboard: View {
                       width: board.width, height: board.height)
     }
 
+    /// The board and its toolbar in Always Dark Mode.
+    static let darkFill = Color(white: 0.12)
+
     let isShown: Bool
     /// The board's pan, so the dots move with its contents.
     let offset: CGSize
+
+    private let isDark = DotsAppearance.isAlwaysDark
 
     var body: some View {
         GeometryReader { geometry in
             let board = Self.rect(in: geometry.size)
             let shape = RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
             shape
-                .fill(.white)
+                .fill(isDark ? Self.darkFill : .white)
                 .overlay(alignment: .topLeading) { grid(for: board) }
                 .clipShape(shape)
                 // After the clip, or it cuts the shadow off. A wide soft spread plus a tight
@@ -508,7 +513,7 @@ struct Whiteboard: View {
             let remainder = value.truncatingRemainder(dividingBy: spacing)
             return remainder < 0 ? remainder + spacing : remainder
         }
-        return GridDots(size: board.size)
+        return GridDots(size: board.size, isDark: isDark)
             .equatable()
             .offset(x: -phase(board.minX + offset.width), y: -phase(board.minY + offset.height))
     }
@@ -530,9 +535,10 @@ struct BoardFlip: ViewModifier {
 
 private struct GridDots: View, Equatable {
     let size: CGSize
+    let isDark: Bool
 
     var body: some View {
-        BoardGrid.dots(covering: size).fill(Color.black.opacity(0.16))
+        BoardGrid.dots(covering: size).fill(isDark ? Color.white.opacity(0.14) : Color.black.opacity(0.16))
     }
 }
 

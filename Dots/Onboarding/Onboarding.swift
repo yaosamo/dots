@@ -246,9 +246,12 @@ struct SetupView: View {
             .fill(fill)
             .frame(width: placement.diameter, height: placement.diameter)
             .overlay(
+                // Drawn at the card size and scaled, so it grows in step with the dot. A font size
+                // following the diameter doesn't animate with it and snaps into place at the end.
                 Image(systemName: dot.symbol)
-                    .font(.system(size: placement.diameter * 0.4, weight: .semibold))
+                    .font(.system(size: Metrics.cardDot * 0.4, weight: .semibold))
                     .foregroundStyle(isSelected ? Color.white : Color.black.opacity(0.35))
+                    .scaleEffect(placement.diameter / Metrics.cardDot)
                     .opacity(state.phase == .choose ? 1 : 0)
             )
             .shadow(color: inBar ? .black.opacity(0.35) : dot.tint.opacity(isSelected ? 0.55 : 0), radius: inBar ? 2 : 20)

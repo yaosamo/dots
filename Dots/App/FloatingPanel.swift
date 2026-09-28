@@ -15,7 +15,8 @@ enum DotsLevel {
 /// Borderless, transparent, non-activating panel that follows the user across Spaces.
 final class FloatingPanel: NSPanel {
     var onCancel: (() -> Void)?
-    private let keyable: Bool
+    /// Whether it can take keyboard focus; the timer turns this on only while its time is typed.
+    var keyable: Bool
 
     init(level: NSWindow.Level, keyable: Bool) {
         self.keyable = keyable

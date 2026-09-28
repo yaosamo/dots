@@ -61,7 +61,7 @@ enum WelcomeTuning {
         var hintSize: Double = 16
         var textWidth: Double = 560
         /// From the dots' bottom edge to the text's top.
-        var textGap: Double = 30
+        var textGap: Double = 56
         var textOpacity: Double = 0.85
     }
 
