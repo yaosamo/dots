@@ -48,9 +48,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		D0750000000000000000A006 /* Dots */ = {
+		D0750000000000000000A006 /* Dots & Clouds */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = D0750000000000000000A00A /* Build configuration list for PBXNativeTarget "Dots" */;
+			buildConfigurationList = D0750000000000000000A00A /* Build configuration list for PBXNativeTarget "Dots & Clouds" */;
 			buildPhases = (
 				D0750000000000000000A007 /* Sources */,
 				D0750000000000000000A003 /* Frameworks */,
@@ -63,7 +63,7 @@
 			fileSystemSynchronizedGroups = (
 				D0750000000000000000A002 /* Dots */,
 			);
-			name = Dots;
+			name = "Dots & Clouds";
 			packageProductDependencies = (
 			);
 			productName = Dots;
@@ -99,7 +99,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				D0750000000000000000A006 /* Dots */,
+				D0750000000000000000A006 /* Dots & Clouds */,
 			);
 		};
 /* End PBXProject section */
@@ -175,6 +175,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Dots-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Dots;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Dots shows your selfie camera in a floating bubble.";
@@ -183,8 +184,8 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = app.dots.Dots;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = yaosamo.com.dots.clouds;
+				PRODUCT_NAME = Dots;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -205,6 +206,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Dots-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Dots;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Dots shows your selfie camera in a floating bubble.";
@@ -213,8 +215,8 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = app.dots.Dots;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = yaosamo.com.dots.clouds;
+				PRODUCT_NAME = Dots;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -223,7 +225,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		D0750000000000000000A00A /* Build configuration list for PBXNativeTarget "Dots" */ = {
+		D0750000000000000000A00A /* Build configuration list for PBXNativeTarget "Dots & Clouds" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				D0750000000000000000A00E /* Debug */,
