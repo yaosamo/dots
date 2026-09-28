@@ -16,7 +16,7 @@ The shortcuts work from any app. The menu bar icon has **About**, the enabled to
 
 ## Debug logs
 
-In the Xcode console, filter by `app.dots` or by a category such as `camera` or `hotkeys`. The camera logs the click-to-handler latency, the morph start and finish, the camera configure time, the `startRunning`/`stopRunning` durations and how long each waited in the session queue.
+In the Xcode console, filter by `yaosamo.com.dots.clouds` or by a category such as `camera` or `hotkeys`. The camera logs the click-to-handler latency, the morph start and finish, the camera configure time, the `startRunning`/`stopRunning` durations and how long each waited in the session queue.
 
 ## Build
 
