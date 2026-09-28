@@ -18,28 +18,8 @@
 <body>
   <main>
     <section class="welcome" aria-labelledby="message">
-      <svg class="clouds" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMin slice" aria-hidden="true">
-        <defs>
-          <filter id="fluff" x="-20%" y="-40%" width="140%" height="180%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="4" seed="7" result="noise"/>
-            <feDisplacementMap in="SourceGraphic" in2="noise" scale="70" xChannelSelector="R" yChannelSelector="G" result="shaped"/>
-            <feGaussianBlur in="shaped" stdDeviation="6"/>
-          </filter>
-        </defs>
-        <g class="drift" filter="url(#fluff)">
-          <ellipse class="shade" cx="150" cy="196" rx="220" ry="96"/>
-          <ellipse class="shade" cx="450" cy="176" rx="200" ry="84"/>
-          <ellipse class="shade" cx="720" cy="212" rx="250" ry="88"/>
-          <ellipse class="shade" cx="1000" cy="188" rx="210" ry="92"/>
-          <ellipse class="shade" cx="1200" cy="200" rx="190" ry="88"/>
-          <rect class="puff" x="-100" y="-40" width="1400" height="200"/>
-          <ellipse class="puff" cx="120" cy="160" rx="230" ry="110"/>
-          <ellipse class="puff" cx="430" cy="140" rx="210" ry="95"/>
-          <ellipse class="puff" cx="700" cy="175" rx="260" ry="100"/>
-          <ellipse class="puff" cx="990" cy="150" rx="220" ry="105"/>
-          <ellipse class="puff" cx="1210" cy="165" rx="200" ry="100"/>
-        </g>
-      </svg>
+      <!-- Rendered once from noise-warped shapes (a live SVG filter here was slow in Safari). -->
+      <div class="clouds" aria-hidden="true"><img src="clouds.png" alt="" width="2400" height="840"></div>
 
       <div class="stage">
         <p class="brand"><img src="icon.png" alt="" width="32" height="32">Dots &amp; Clouds</p>

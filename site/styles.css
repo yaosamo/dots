@@ -1,7 +1,5 @@
 :root {
   --sky: #c9dcf6;
-  --cloud: #ffffff;
-  --cloud-shade: #dfe6f2;
   --ink: #1d1d1f;
   --ink-soft: #5d6270;
   --page: #ffffff;
@@ -26,8 +24,6 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --sky: #0e1524;
-    --cloud: #dfe6f2;
-    --cloud-shade: #8d99b3;
     --ink: #f2f3f7;
     --ink-soft: #a3a9b8;
     --page: #0a0f1a;
@@ -36,8 +32,6 @@
 }
 :root[data-theme="dark"] {
   --sky: #0e1524;
-  --cloud: #dfe6f2;
-  --cloud-shade: #8d99b3;
   --ink: #f2f3f7;
   --ink-soft: #a3a9b8;
   --page: #0a0f1a;
@@ -64,13 +58,18 @@ a:hover { text-decoration-thickness: 2px; }
   position: absolute;
   inset: -12% -10% auto;
   height: 62%;
-  width: 120%;
   pointer-events: none;
   animation: descend 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
-.clouds .puff { fill: var(--cloud); }
-.clouds .shade { fill: var(--cloud-shade); }
-.clouds .drift { animation: drift 60s linear infinite alternate; }
+/* Only transforms and opacity animate, so the browser just moves the picture. */
+.clouds img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  animation: drift 60s linear infinite alternate;
+  will-change: transform;
+}
 @keyframes descend { from { transform: translateY(-45%); opacity: 0; } }
 @keyframes drift { to { transform: translateX(-4%); } }
 
@@ -181,6 +180,11 @@ footer .spacer { flex: 1; }
 .page p, .page li { max-width: 64ch; }
 .page .updated { color: var(--ink-soft); margin: 0 0 32px; }
 .page footer { width: 100%; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .clouds { opacity: 0.85; }
+}
+:root[data-theme="dark"] .clouds { opacity: 0.85; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
