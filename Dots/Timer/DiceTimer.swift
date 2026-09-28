@@ -23,6 +23,9 @@ final class DiceTimerModel: ObservableObject {
     @Published private(set) var isDone = false
     /// Over the die or its time label: shows the −/+ and reset controls.
     @Published var isHovering = false
+    /// On screen: the time label only ticks while it is (a hidden window's SwiftUI timelines keep
+    /// running otherwise).
+    @Published var isShown = false
 
     var onDone: (() -> Void)?
     private var alarm: DispatchWorkItem?
@@ -273,6 +276,7 @@ final class DiceTimerController: DotFeature {
         moveWindow()
         panel.orderFrontRegardless()
         isVisible = true
+        model.isShown = true
         onVisibilityChange(true)
         startLoop()
     }
@@ -282,6 +286,7 @@ final class DiceTimerController: DotFeature {
         stopLoop()
         panel.orderOut(nil)
         isVisible = false
+        model.isShown = false
         onVisibilityChange(false)
     }
 
@@ -416,7 +421,7 @@ private struct TimeLabel: View {
     @FocusState private var isFieldFocused: Bool
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.25)) { timeline in
+        TimelineView(.animation(minimumInterval: 0.25, paused: !model.isShown)) { timeline in
             HStack(spacing: 2) {
                 if showsControls { control("minus") { model.adjust(minutes: -1) } }
                 if let draft {
