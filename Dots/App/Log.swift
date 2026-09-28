@@ -3,7 +3,7 @@ import os
 
 /// Filter the Xcode console by "app.dots" or a category, e.g. `category:camera`.
 enum Log {
-    private static let subsystem = "yaosamo.com.dots.clouds"
+    private static let subsystem = "app.dots.Dots"
     static let camera = Logger(subsystem: subsystem, category: "camera")
     static let hotKeys = Logger(subsystem: subsystem, category: "hotkeys")
 
