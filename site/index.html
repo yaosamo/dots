@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dots &amp; Clouds</title>
+  <meta name="description" content="Five small, playful tools for your Mac: a selfie camera bubble, tasks, a pen for your screen, a dice timer and clipboard history.">
+  <meta property="og:title" content="Dots &amp; Clouds">
+  <meta property="og:description" content="Small and fun everyday tools for your Mac.">
+  <meta property="og:image" content="https://dots.yaosamo.com/icon.png">
+  <link rel="icon" href="favicon.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <section class="welcome" aria-labelledby="message">
+      <svg class="clouds" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMin slice" aria-hidden="true">
+        <defs>
+          <filter id="fluff" x="-20%" y="-40%" width="140%" height="180%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="4" seed="7" result="noise"/>
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="70" xChannelSelector="R" yChannelSelector="G" result="shaped"/>
+            <feGaussianBlur in="shaped" stdDeviation="6"/>
+          </filter>
+        </defs>
+        <g class="drift" filter="url(#fluff)">
+          <ellipse class="shade" cx="150" cy="196" rx="220" ry="96"/>
+          <ellipse class="shade" cx="450" cy="176" rx="200" ry="84"/>
+          <ellipse class="shade" cx="720" cy="212" rx="250" ry="88"/>
+          <ellipse class="shade" cx="1000" cy="188" rx="210" ry="92"/>
+          <ellipse class="shade" cx="1200" cy="200" rx="190" ry="88"/>
+          <rect class="puff" x="-100" y="-40" width="1400" height="200"/>
+          <ellipse class="puff" cx="120" cy="160" rx="230" ry="110"/>
+          <ellipse class="puff" cx="430" cy="140" rx="210" ry="95"/>
+          <ellipse class="puff" cx="700" cy="175" rx="260" ry="100"/>
+          <ellipse class="puff" cx="990" cy="150" rx="220" ry="105"/>
+          <ellipse class="puff" cx="1210" cy="165" rx="200" ry="100"/>
+        </g>
+      </svg>
+
+      <div class="stage">
+        <p class="brand"><img src="icon.png" alt="" width="32" height="32">Dots &amp; Clouds</p>
+
+        <div class="preview-slot">
+          <div class="preview" id="preview" role="region" aria-live="polite" aria-label="What this dot does" hidden>
+            <h2><span id="preview-title"></span> <kbd id="preview-key"></kbd></h2>
+            <p id="preview-text"></p>
+          </div>
+        </div>
+
+        <ul class="dots">
+          <li><button class="dot" style="--tint: var(--camera); --i: 0" data-title="Selfie camera" data-key="⌃⇧1"
+              data-text="A floating selfie bubble for calls and recordings. Resize it, reshape it, drag it anywhere."
+              aria-pressed="false" aria-controls="preview" aria-label="Selfie camera">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          </button></li>
+          <li><button class="dot" style="--tint: var(--tasks); --i: 1" data-title="Tasks" data-key="⌃⇧2"
+              data-text="A quick list over everything. Jot a task, check it off, get back to work."
+              aria-pressed="false" aria-controls="preview" aria-label="Tasks">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7l2 2 3-3M4 15l2 2 3-3M13 8h7M13 16h7"/></svg>
+          </button></li>
+          <li><button class="dot" style="--tint: var(--pen); --i: 2" data-title="Draw on screen" data-key="⌃⇧3"
+              data-text="Draw on any screen, spotlight what matters, or sketch on a whiteboard."
+              aria-pressed="false" aria-controls="preview" aria-label="Draw on screen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19l1-4L16 5l3 3L9 18z"/><path d="M14 7l3 3"/></svg>
+          </button></li>
+          <li><button class="dot" style="--tint: var(--timer); --i: 3" data-title="Timer" data-key="⌃⇧4"
+              data-text="A little die that tumbles to the bottom of your screen and counts down. Toss it, click to start, or type any time from 10 seconds up."
+              aria-pressed="false" aria-controls="preview" aria-label="Timer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="0.6" fill="currentColor"/><circle cx="15" cy="15" r="0.6" fill="currentColor"/><circle cx="12" cy="12" r="0.6" fill="currentColor"/></svg>
+          </button></li>
+          <li><button class="dot" style="--tint: var(--clipboard); --i: 4" data-title="Clipboard" data-key="⌃⇧5"
+              data-text="Your last five copies, text or images, one click away from being copied again."
+              aria-pressed="false" aria-controls="preview" aria-label="Clipboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9z"/></svg>
+          </button></li>
+        </ul>
+
+        <h1 class="message" id="message">Hello, we’re dots: small and fun everyday tools for your Mac</h1>
+        <p class="hint">Click a dot to see what it does</p>
+        <a class="download" aria-disabled="true">Coming soon to the Mac App Store</a>
+        <p class="requirement">For macOS 14 Sonoma or later</p>
+      </div>
+    </section>
+
+    <ul class="tools" aria-label="The five dots">
+      <li style="--tint: var(--camera)"><h3>Selfie camera</h3><kbd>⌃⇧1</kbd>
+        <p>A floating bubble of your camera for calls and recordings. Circle, portrait or a wobbling blob, three sizes, and electric, fire, rainbow or cloud effects.</p></li>
+      <li style="--tint: var(--tasks)"><h3>Tasks</h3><kbd>⌃⇧2</kbd>
+        <p>A list over everything. Add a task, check it off, drag to reorder, and it’s there next time.</p></li>
+      <li style="--tint: var(--pen)"><h3>Draw on screen</h3><kbd>⌃⇧3</kbd>
+        <p>Draw over any app, spotlight what matters, or flip to a whiteboard with shapes, arrows and text.</p></li>
+      <li style="--tint: var(--timer)"><h3>Timer</h3><kbd>⌃⇧4</kbd>
+        <p>A 3D die that bounces around your screen and counts down. It chimes and hops when time’s up.</p></li>
+      <li style="--tint: var(--clipboard)"><h3>Clipboard</h3><kbd>⌃⇧5</kbd>
+        <p>Your last five copies, text or images, to copy again with a click or a number key.</p></li>
+    </ul>
+
+    <p class="promise">Pick only the dots you want. They wait at the top of your screen, and everything they hold stays on your Mac: no account, no tracking, nothing collected.</p>
+  </main>
+
+  <footer>
+    <span>© 2026 Yaroslav Samoylov</span>
+    <span class="spacer"></span>
+    <a href="/support">Support</a>
+    <a href="/privacy">Privacy</a>
+  </footer>
+
+  <script>
+    // A dot opens its card; clicking it again, or another dot, swaps or closes it.
+    const preview = document.getElementById("preview");
+    const dots = document.querySelectorAll(".dot");
+    dots.forEach((dot) => {
+      dot.addEventListener("click", () => {
+        const isOpen = dot.getAttribute("aria-pressed") === "true";
+        dots.forEach((other) => other.setAttribute("aria-pressed", "false"));
+        if (isOpen) { preview.hidden = true; return; }
+        dot.setAttribute("aria-pressed", "true");
+        document.getElementById("preview-title").textContent = dot.dataset.title;
+        document.getElementById("preview-key").textContent = dot.dataset.key;
+        document.getElementById("preview-text").textContent = dot.dataset.text;
+        preview.hidden = false;
+      });
+    });
+  </script>
+</body>
+</html>
