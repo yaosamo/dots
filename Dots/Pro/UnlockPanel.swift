@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import Combine
 import SwiftUI
 
 /// The Dots Pro card: over everything, centered on the screen under the pointer. Opened by any
@@ -12,6 +13,7 @@ final class UnlockController {
     /// The window that had the keyboard before the card, e.g. the pen canvas; it gets it back.
     private weak var previousKey: NSWindow?
     private(set) var isVisible = false
+    private var purchaseObserver: AnyCancellable?
 
     private init() {
         panel.onCancel = { [weak self] in self?.hide() }
@@ -28,6 +30,15 @@ final class UnlockController {
         panel.contentView = FirstClickHostingView(rootView: UnlockView(
             store: ProStore.shared, feature: feature, onClose: { [weak self] in self?.hide() }
         ))
+        panel.level = DotsLevel.unlock
+        // The App Store's sign-in and payment windows are ordinary windows: while they're up, the
+        // card steps down to their level so they show over it, and back up when they're done.
+        purchaseObserver = ProStore.shared.$purchaseState.removeDuplicates().sink { [weak self] state in
+            MainActor.assumeIsolated {
+                guard let self, self.isVisible else { return }
+                self.panel.level = state == .purchasing ? .normal : DotsLevel.unlock
+            }
+        }
         NSApp.activate()
         panel.makeKeyAndOrderFront(nil)
         NSCursor.arrow.set()
@@ -36,6 +47,7 @@ final class UnlockController {
     func hide() {
         guard isVisible else { return }
         isVisible = false
+        purchaseObserver = nil
         panel.orderOut(nil)
         panel.contentView = nil
         if let previousKey, previousKey.isVisible {
