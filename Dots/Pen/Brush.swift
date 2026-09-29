@@ -29,6 +29,9 @@ enum Brush: String, CaseIterable, Identifiable, Codable {
     /// Spotlight strokes don't loop: once closed, they cut a hole in a dimmed screen (SpotlightLayer).
     var isSpotlight: Bool { self == .spotlight }
 
+    /// The shader brushes are Dots Pro; the red pen and spotlight are free.
+    var isPro: Bool { [.electric, .fire, .rainbow].contains(self) }
+
     /// What the stroke Canvas paints. Shader brushes only read its alpha.
     var inkColor: Color { self == .ink ? .red : .white }
 
@@ -125,17 +128,35 @@ final class BrushState: ObservableObject {
     @Published var boardColor = BoardColor.black
 
     init() {
-        showsWhiteboard = UserDefaults.standard.bool(forKey: Self.whiteboardKey)
+        showsWhiteboard = ProStore.shared.isPro && UserDefaults.standard.bool(forKey: Self.whiteboardKey)
     }
 
-    /// The whiteboard's marker while the board is up, the electric brush otherwise.
-    /// Runs when the pen opens and whenever the board is shown or hidden.
+    /// The whiteboard's marker while the board is up, otherwise the electric brush (the red pen
+    /// without Dots Pro). Runs when the pen opens and whenever the board is shown or hidden.
     func selectDefaultTool() {
+        if showsWhiteboard, !ProStore.shared.isPro { showsWhiteboard = false }
         if showsWhiteboard {
             boardTool = .marker
         } else {
-            brush = .electric
+            brush = ProStore.shared.isPro ? .electric : .ink
         }
+    }
+
+    /// Brushes, the palette and the keys all pick through here: a locked one opens the Pro card.
+    func pick(_ brush: Brush) {
+        guard !brush.isPro || ProStore.shared.isPro else {
+            UnlockController.shared.show(for: .brushes)
+            return
+        }
+        self.brush = brush
+    }
+
+    func toggleWhiteboard() {
+        guard showsWhiteboard || ProStore.shared.isPro else {
+            UnlockController.shared.show(for: .whiteboard)
+            return
+        }
+        showsWhiteboard.toggle()
     }
 }
 
@@ -189,6 +210,7 @@ struct BrushPalette: View {
     @ObservedObject var brushes: BrushState
     /// For "clear screen": enabled only while something is drawn on the screen.
     @ObservedObject var ink: InkModel
+    @ObservedObject private var pro = ProStore.shared
 
     /// False for the first frame; then the pill and its buttons slide in from the screen's edge.
     @State private var hasAppeared = false
@@ -211,7 +233,7 @@ struct BrushPalette: View {
         VStack(spacing: Metrics.spacing) {
             ForEach(Array(Brush.allCases.enumerated()), id: \.element) { index, brush in
                 Button {
-                    if isActive(brush) { brushes.isPointer = true } else { brushes.brush = brush }
+                    if isActive(brush) { brushes.isPointer = true } else { brushes.pick(brush) }
                 } label: {
                     Circle()
                         .fill(brush.swatch)
@@ -221,11 +243,14 @@ struct BrushPalette: View {
                                 .strokeBorder(Color.white, lineWidth: isActive(brush) ? 2.5 : 0)
                                 .padding(-6)
                         )
+                        .overlay(alignment: .bottomTrailing) {
+                            if brush.isPro, !pro.isPro { LockBadge().offset(x: 4, y: 4) }
+                        }
                         .frame(width: Metrics.cell, height: Metrics.cell)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .help("\(brush.title)  \(index + 1)")
+                .help(brush.isPro && !pro.isPro ? "\(brush.title) (Dots Pro)" : "\(brush.title)  \(index + 1)")
                 .modifier(SlideInFromRight(hasAppeared: hasAppeared, step: index + 1))
             }
 
@@ -248,7 +273,7 @@ struct BrushPalette: View {
                 .fill(.white.opacity(0.2))
                 .frame(width: Metrics.swatch, height: Metrics.dividerHeight)
 
-            Button { brushes.showsWhiteboard.toggle() } label: {
+            Button { brushes.toggleWhiteboard() } label: {
                 Image(systemName: brushes.showsWhiteboard ? "rectangle.inset.filled" : "rectangle")
                     .font(.system(size: 22, weight: .medium))
                     .foregroundStyle(.white.opacity(brushes.showsWhiteboard ? 1 : 0.7))
@@ -258,14 +283,28 @@ struct BrushPalette: View {
                             .fill(.white.opacity(brushes.showsWhiteboard ? 0.18 : 0))
                     )
                     .contentShape(Rectangle())
+                    .overlay(alignment: .bottomTrailing) {
+                        if !pro.isPro { LockBadge().offset(x: -4, y: -4) }
+                    }
             }
             .buttonStyle(.plain)
-            .help("Whiteboard  W")
+            .help(pro.isPro ? "Whiteboard  W" : "Whiteboard (Dots Pro)")
             .modifier(SlideInFromRight(hasAppeared: hasAppeared, step: Brush.allCases.count + 2))
         }
     }
 
     private func isActive(_ brush: Brush) -> Bool {
         !brushes.isPointer && brushes.boardTool == nil && brushes.brush == brush
+    }
+}
+
+/// Marks a Dots Pro tool in the palette.
+private struct LockBadge: View {
+    var body: some View {
+        Image(systemName: "lock.fill")
+            .font(.system(size: 8, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 16, height: 16)
+            .background(Circle().fill(Color.black.opacity(0.55)))
     }
 }

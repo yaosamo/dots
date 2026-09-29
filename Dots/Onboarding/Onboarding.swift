@@ -341,7 +341,7 @@ private struct DotCard: View {
     }
 }
 
-private struct PillButtonStyle: ButtonStyle {
+struct PillButtonStyle: ButtonStyle {
     var isProminent = true
 
     @Environment(\.isEnabled) private var isEnabled

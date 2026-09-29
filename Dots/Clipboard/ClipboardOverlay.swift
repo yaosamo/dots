@@ -52,7 +52,7 @@ final class ClipboardController: DotFeature {
     }
 
     private func handleKey(_ event: NSEvent, state: ClipboardOverlayState) -> Bool {
-        let items = history.items
+        let items = history.visibleItems
         if let digit = event.charactersIgnoringModifiers.flatMap(Int.init), items.indices.contains(digit - 1) {
             history.copy(items[digit - 1])
             hide()
@@ -99,6 +99,7 @@ struct ClipboardOverlayView: View {
 
     @ObservedObject var history: ClipboardHistory
     @ObservedObject var state: ClipboardOverlayState
+    @ObservedObject private var pro = ProStore.shared
     let onPick: (ClipboardHistory.Item) -> Void
     let onClose: () -> Void
 
@@ -149,15 +150,18 @@ struct ClipboardOverlayView: View {
         }
     }
 
+    /// Without Dots Pro, the copies past the first three are behind one "more with Pro" card.
+    private var showsProCard: Bool { !pro.isPro && history.items.count > ProStore.freeClipboardLimit }
+
     /// As wide as fits the screen with room at the sides, up to `maxCardWidth`.
     private func cardWidth(in screenWidth: CGFloat) -> CGFloat {
-        let count = CGFloat(max(history.items.count, 1))
+        let count = CGFloat(max(history.visibleItems.count + (showsProCard ? 1 : 0), 1))
         return min(Self.maxCardWidth, (screenWidth - 160 - (count - 1) * Self.spacing) / count)
     }
 
     private func cards(cardWidth: CGFloat) -> some View {
         HStack(spacing: Self.spacing) {
-            ForEach(Array(history.items.enumerated()), id: \.element.id) { index, item in
+            ForEach(Array(history.visibleItems.enumerated()), id: \.element.id) { index, item in
                 ClipCard(item: item, isDark: isDark,
                          onPick: { onPick(item) },
                          onDelete: { withAnimation(Self.removal) { history.delete(item) } },
@@ -175,6 +179,17 @@ struct ClipboardOverlayView: View {
                                           : .easeIn(duration: 0.18),
                                value: isRevealed)
                     .transition(.scale(scale: 0.8).combined(with: .opacity))
+            }
+            if showsProCard {
+                ProCard(hidden: history.items.count - history.visibleItems.count, isDark: isDark) {
+                    UnlockController.shared.show(for: .clipboardHistory)
+                }
+                .frame(width: cardWidth, height: cardWidth * 1.1)
+                .opacity(isRevealed ? 1 : 0)
+                .offset(y: isRevealed ? 0 : 24)
+                .animation(isRevealed ? .spring(response: 0.45, dampingFraction: 0.85).delay(0.1 + Double(history.visibleItems.count) * 0.04)
+                                      : .easeIn(duration: 0.18),
+                           value: isRevealed)
             }
         }
     }
@@ -288,5 +303,38 @@ private struct ClipCard: View {
         .help("Delete")
         .padding(8)
         .transition(.opacity)
+    }
+}
+
+/// Where the older copies are without Dots Pro: a quiet card that opens the Pro card.
+private struct ProCard: View {
+    let hidden: Int
+    let isDark: Bool
+    let onTap: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+        Button(action: onTap) {
+            VStack(spacing: 10) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                Text(hidden == 1 ? "1 more copy" : "\(hidden) more copies")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("with Dots Pro")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(shape.strokeBorder(Color.primary.opacity(isHovering ? 0.3 : 0.18), style: StrokeStyle(lineWidth: 1.5, dash: [5, 5])))
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .scaleEffect(isHovering ? 1.03 : 1)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isHovering)
+        .onHover { isHovering = $0 }
+        .help("See your last five copies with Dots Pro")
     }
 }

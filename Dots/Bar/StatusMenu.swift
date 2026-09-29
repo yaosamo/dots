@@ -41,6 +41,22 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         let choose = NSMenuItem(title: "Choose Dots…", action: #selector(showSetup), keyEquivalent: "")
         choose.target = self
         menu.addItem(choose)
+        if ProStore.shared.isPro {
+            let pro = NSMenuItem(title: "Dots Pro", action: nil, keyEquivalent: "")
+            pro.state = .on
+            pro.isEnabled = false
+            menu.addItem(pro)
+        } else {
+            let unlock = NSMenuItem(title: "Unlock Dots Pro…", action: #selector(showUnlock), keyEquivalent: "")
+            unlock.target = self
+            menu.addItem(unlock)
+        }
+        #if DEBUG
+        let pretend = NSMenuItem(title: "Pretend Pro (Debug)", action: #selector(togglePretendPro), keyEquivalent: "")
+        pretend.target = self
+        pretend.state = ProStore.shared.isPro ? .on : .off
+        menu.addItem(pretend)
+        #endif
         menu.addItem(.separator())
 
         let welcome = NSMenuItem(title: "Show Welcome", action: #selector(showWelcome), keyEquivalent: "")
@@ -66,6 +82,16 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     @objc private func showSetup() {
         coordinator.showSetup()
     }
+
+    @objc private func showUnlock() {
+        UnlockController.shared.show(for: nil)
+    }
+
+    #if DEBUG
+    @objc private func togglePretendPro() {
+        ProStore.shared.debugOverride = !ProStore.shared.isPro
+    }
+    #endif
 
     @objc private func showWelcome() {
         coordinator.showWelcome()

@@ -25,7 +25,7 @@ enum Dot: Int, CaseIterable, Identifiable {
         case .tasks: "A quick list over everything. Jot a task, check it off, get back to work."
         case .pen: "Draw on any screen, spotlight what matters, or sketch on a whiteboard."
         case .timer: "A little die that tumbles to the bottom of your screen and counts down. Click to start."
-        case .clipboard: "Your last five copies, one click away from being copied again."
+        case .clipboard: "Your recent copies, one click away from being copied again."
         }
     }
 
@@ -89,6 +89,7 @@ final class DotsCoordinator: ObservableObject {
     private let onboarding = OnboardingController()
 
     func start() {
+        ProStore.shared.start()
         camera = CameraController { [weak self] in self?.set(.camera, isOn: $0) }
         tasks = TaskOverlayController { [weak self] in self?.set(.tasks, isOn: $0) }
         pen = PenController { [weak self] in self?.set(.pen, isOn: $0) }

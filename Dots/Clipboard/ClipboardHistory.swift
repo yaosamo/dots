@@ -36,6 +36,11 @@ final class ClipboardHistory: ObservableObject {
     }
     @Published private(set) var needsPermission = false
 
+    /// All five are always kept; without Dots Pro only the newest three are shown and copyable.
+    var visibleItems: [Item] {
+        ProStore.shared.isPro ? items : Array(items.prefix(ProStore.freeClipboardLimit))
+    }
+
     private let store = ClipboardStore()
     private let pasteboard = NSPasteboard.general
     private var lastChange = NSPasteboard.general.changeCount

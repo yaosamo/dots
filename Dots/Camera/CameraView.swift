@@ -4,6 +4,7 @@ import SwiftUI
 /// SwiftUI only draws the hover controls; the bubble itself is a Core Animation layer tree.
 struct CameraView: View {
     @ObservedObject var model: CameraModel
+    @ObservedObject private var pro = ProStore.shared
     let bubble: CameraBubbleView
 
     @State private var isHovering = false
@@ -13,11 +14,11 @@ struct CameraView: View {
 
         ZStack {
             BubbleHost(view: bubble)
-            if model.isShown, model.effect == .cloud {
+            if model.isShown, effect == .cloud {
                 CloudRim(size: size)
                     .transition(.opacity)
             }
-            if model.isShown, let brush = model.effect.brush {
+            if model.isShown, let brush = effect.brush {
                 EffectRim(brush: brush, size: size, cornerRadius: model.cornerRadius,
                           blob: model.shape == .blob ? 1 : 0)
                     .transition(.opacity)
@@ -52,6 +53,9 @@ struct CameraView: View {
         .environment(\.colorScheme, .dark)
     }
 
+    /// Effects are Dots Pro. The choice is kept without it, so it comes back with a restore.
+    private var effect: CameraModel.Effect { pro.isPro ? model.effect : .none }
+
     private var bubbleRect: CGRect {
         let window = CameraModel.windowSize
         let size = model.contentSize
@@ -71,8 +75,14 @@ struct CameraView: View {
                 help: model.shape.next.title,
                 action: model.toggleShape
             )
-            ControlButton(symbol: model.effect.symbol, help: model.effect.help) {
-                withAnimation(.easeOut(duration: 0.2)) { model.stepEffect() }
+            if pro.isPro {
+                ControlButton(symbol: model.effect.symbol, help: model.effect.help) {
+                    withAnimation(.easeOut(duration: 0.2)) { model.stepEffect() }
+                }
+            } else {
+                ControlButton(symbol: "sparkles", help: "Effects (Dots Pro)", isLocked: true) {
+                    UnlockController.shared.show(for: .cameraEffects)
+                }
             }
             ControlButton(symbol: "xmark", help: "Close") { model.onClose?() }
         }
@@ -95,6 +105,7 @@ struct CameraView: View {
 private struct ControlButton: View {
     let symbol: String
     let help: String
+    var isLocked = false
     let action: () -> Void
 
     var body: some View {
@@ -105,6 +116,13 @@ private struct ControlButton: View {
                 // doesn't linger at the old spot while the panel moves.
                 .contentTransition(.identity)
                 .frame(width: 24, height: 24)
+                .overlay(alignment: .bottomTrailing) {
+                    if isLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 7, weight: .bold))
+                            .offset(x: -2, y: -2)
+                    }
+                }
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)

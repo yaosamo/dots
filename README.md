@@ -14,6 +14,21 @@ A macOS menu-bar-style utility: dots float at the top of the screen, each one a 
 
 The shortcuts work from any app. The menu bar icon has **About**, the enabled tools with their shortcuts, **Choose Dots…**, and **Quit**. Shortcuts stay fixed per tool whichever dots are on. You can also right-click the dot bar to quit.
 
+## Dots Pro
+
+Every dot is free to switch on. One non-consumable in-app purchase, **Dots Pro** (`app.dots.Dots.pro`), unlocks the parts inside them:
+
+| Free | Dots Pro |
+|------|----------|
+| Camera: circle, portrait and blob, every size | Camera effects: electric, fire, rainbow, cloud |
+| Pen: red pen, spotlight, eraser, undo | Pen: electric, fire and rainbow brushes |
+| Tasks, timer | Whiteboard (**W**) |
+| Clipboard: the newest three copies | Clipboard: all five |
+
+A locked feature shows a lock and opens the Dots Pro card (`Pro/UnlockPanel.swift`); so does **Unlock Dots Pro…** in the menu bar menu. `Pro/ProStore.swift` checks StoreKit 2 entitlements at launch and on every transaction update (refunds turn Pro off live) and caches the result so Dots opens unlocked. Clipboard history always keeps five; without Pro only three show. A chosen camera effect is kept without Pro and comes back with a restore.
+
+To test purchases locally, pick `Dots.storekit` in the scheme's Run › Options › StoreKit Configuration, then use Xcode's Debug › StoreKit › Manage Transactions to refund or delete. Debug builds also have **Pretend Pro (Debug)** in the menu bar menu.
+
 ## Debug logs
 
 In the Xcode console, filter by `app.dots.Dots` or by a category such as `camera` or `hotkeys`. The camera logs the click-to-handler latency, the morph start and finish, the camera configure time, the `startRunning`/`stopRunning` durations and how long each waited in the session queue.
@@ -23,7 +38,7 @@ In the Xcode console, filter by `app.dots.Dots` or by a category such as `camera
 Open `Dots.xcodeproj` in Xcode and run, or:
 
 ```sh
-xcodebuild -project Dots.xcodeproj -target Dots -configuration Debug build
+xcodebuild -project Dots.xcodeproj -target "Dots & Clouds" -configuration Debug build
 ```
 
 Requires macOS 14+. The pen shaders need Xcode's Metal Toolchain (`xcodebuild -downloadComponent MetalToolchain`, or Xcode → Settings → Components). The app is sandboxed with the camera entitlement, and macOS asks for camera permission the first time you open dot 1.

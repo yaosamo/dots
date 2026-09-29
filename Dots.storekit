@@ -1,0 +1,38 @@
+{
+  "identifier" : "6F6A2C1E-3B7D-4B7C-9E2A-5D0B1A7F4C11",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "14.99",
+      "familyShareable" : true,
+      "internalID" : "7A1D3E55-8C2B-4F0A-B6D1-2E9C4A8F7B02",
+      "localizations" : [
+        {
+          "description" : "Camera effects, shader brushes, the whiteboard and full clipboard history. One purchase.",
+          "displayName" : "Dots Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "app.dots.Dots.pro",
+      "referenceName" : "Dots Pro",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

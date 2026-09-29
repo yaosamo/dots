@@ -403,9 +403,9 @@ final class PenCanvasView: NSView, NSTextFieldDelegate {
         } else if characters == "c" {
             ink.clear()
         } else if characters == "w" {
-            brushes.showsWhiteboard.toggle()
+            brushes.toggleWhiteboard()
         } else if let brush = Brush(digit: characters) {
-            brushes.brush = brush
+            brushes.pick(brush)
         } else if showsBoard, let tool = BoardTool(key: characters) {
             brushes.boardTool = tool
         } else {

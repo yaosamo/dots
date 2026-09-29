@@ -10,6 +10,8 @@ enum DotsLevel {
     static let bar = NSWindow.Level(rawValue: base + 4)
     /// Welcome and dot setup cover everything, the bar included.
     static let onboarding = NSWindow.Level(rawValue: base + 5)
+    /// The Dots Pro card opens from inside any of them, so it sits on top of all.
+    static let unlock = NSWindow.Level(rawValue: base + 6)
 }
 
 /// Borderless, transparent, non-activating panel that follows the user across Spaces.
