@@ -8,9 +8,9 @@ enum ProFeature: CaseIterable {
     var title: String {
         switch self {
         case .cameraEffects: "Camera effects"
-        case .brushes: "Shader brushes"
+        case .brushes: "Magic ink"
         case .whiteboard: "Whiteboard"
-        case .clipboardHistory: "Full clipboard history"
+        case .clipboardHistory: "More history"
         }
     }
 
@@ -18,8 +18,18 @@ enum ProFeature: CaseIterable {
         switch self {
         case .cameraEffects: "Electric, fire, rainbow and cloud around your bubble."
         case .brushes: "Draw with electric, fire and rainbow ink."
-        case .whiteboard: "A board with shapes, arrows and text that's still there tomorrow."
+        case .whiteboard: "Shapes, arrows and notes on a board that's still there tomorrow."
         case .clipboardHistory: "Your last five copies instead of three."
+        }
+    }
+
+    /// A short muted loop from the App Store preview, in Pro/Previews.
+    var preview: String {
+        switch self {
+        case .cameraEffects: "camera-effects"
+        case .brushes: "brushes"
+        case .whiteboard: "whiteboard"
+        case .clipboardHistory: "clipboard"
         }
     }
 
