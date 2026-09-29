@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Dot 5's screen: the clipboard history as a row of cards over a frosted screen, like the tasks.
-/// Click a card (or press 1–5) to copy it again; hover one for ✕ (or press Delete) to remove it;
+/// Click a card (or press 1–9, 0 for the tenth) to copy it again; hover one for ✕ (or press Delete) to remove it;
 /// Esc or a click off the cards closes it.
 @MainActor
 final class ClipboardController: DotFeature {
@@ -37,7 +37,7 @@ final class ClipboardController: DotFeature {
             },
             onClose: { [weak self] in self?.hide() }
         ))
-        // 1–5 copy that card; Delete removes the one under the pointer.
+        // 1–9 and 0 copy that card; Delete removes the one under the pointer.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let isForPanel = event.window === self?.panel
             let isConsumed = MainActor.assumeIsolated { () -> Bool in
@@ -53,8 +53,9 @@ final class ClipboardController: DotFeature {
 
     private func handleKey(_ event: NSEvent, state: ClipboardOverlayState) -> Bool {
         let items = history.visibleItems
-        if let digit = event.charactersIgnoringModifiers.flatMap(Int.init), items.indices.contains(digit - 1) {
-            history.copy(items[digit - 1])
+        if let digit = event.charactersIgnoringModifiers.flatMap(Int.init),
+           case let index = digit == 0 ? 9 : digit - 1, items.indices.contains(index) {
+            history.copy(items[index])
             hide()
             return true
         }
@@ -96,6 +97,8 @@ struct ClipboardOverlayView: View {
     static let removal = Animation.spring(response: 0.35, dampingFraction: 0.85)
     private static let maxCardWidth: CGFloat = 230
     private static let spacing: CGFloat = 20
+    /// Ten copies wrap into two rows of five, so the cards stay a readable size on a laptop.
+    private static let perRow = 5
 
     @ObservedObject var history: ClipboardHistory
     @ObservedObject var state: ClipboardOverlayState
@@ -155,13 +158,25 @@ struct ClipboardOverlayView: View {
 
     /// As wide as fits the screen with room at the sides, up to `maxCardWidth`.
     private func cardWidth(in screenWidth: CGFloat) -> CGFloat {
-        let count = CGFloat(max(history.visibleItems.count + (showsProCard ? 1 : 0), 1))
+        let count = CGFloat(min(max(history.visibleItems.count + (showsProCard ? 1 : 0), 1), Self.perRow))
         return min(Self.maxCardWidth, (screenWidth - 160 - (count - 1) * Self.spacing) / count)
     }
 
     private func cards(cardWidth: CGFloat) -> some View {
+        let items = history.visibleItems
+        let rows = stride(from: 0, to: max(items.count, 1), by: Self.perRow).map { $0 }
+        return VStack(spacing: Self.spacing) {
+            ForEach(rows, id: \.self) { start in
+                row(Array(items.enumerated())[start..<min(start + Self.perRow, items.count)],
+                    isLast: start + Self.perRow >= items.count, cardWidth: cardWidth)
+            }
+        }
+    }
+
+    private func row(_ entries: ArraySlice<EnumeratedSequence<[ClipboardHistory.Item]>.Element>, isLast: Bool,
+                     cardWidth: CGFloat) -> some View {
         HStack(spacing: Self.spacing) {
-            ForEach(Array(history.visibleItems.enumerated()), id: \.element.id) { index, item in
+            ForEach(entries, id: \.element.id) { index, item in
                 ClipCard(item: item, isDark: isDark,
                          onPick: { onPick(item) },
                          onDelete: { withAnimation(Self.removal) { history.delete(item) } },
@@ -180,7 +195,7 @@ struct ClipboardOverlayView: View {
                                value: isRevealed)
                     .transition(.scale(scale: 0.8).combined(with: .opacity))
             }
-            if showsProCard {
+            if isLast, showsProCard {
                 ProCard(hidden: history.items.count - history.visibleItems.count, isDark: isDark) {
                     UnlockController.shared.show(for: .clipboardHistory)
                 }
@@ -210,7 +225,7 @@ struct ClipboardOverlayView: View {
     }
 }
 
-/// One copy, its text or its whole image; on hover, "Copy" and ✕ to remove it (1–5 still copy).
+/// One copy, its text or its whole image; on hover, "Copy" and ✕ to remove it (the digit keys still copy).
 private struct ClipCard: View {
     let item: ClipboardHistory.Item
     let isDark: Bool
@@ -335,6 +350,6 @@ private struct ProCard: View {
         .scaleEffect(isHovering ? 1.03 : 1)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isHovering)
         .onHover { isHovering = $0 }
-        .help("See your last five copies with Dots Pro")
+        .help("See your last ten copies with Dots Pro")
     }
 }

@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Dot 5: the last five things you copied, shown as cards over the screen (ClipboardOverlay.swift). Kept between
+/// Dot 5: the last ten things you copied (three without Dots Pro), shown as cards over the screen (ClipboardOverlay.swift). Kept between
 /// launches in Application Support (see ClipboardStore); passwords and other copies an app marks
 /// concealed or transient are never recorded.
 ///
@@ -28,7 +28,7 @@ final class ClipboardHistory: ObservableObject {
         }
     }
 
-    static let limit = 5
+    static let limit = 10
     private static let pollInterval: TimeInterval = 0.5
 
     @Published private(set) var items: [Item] {
@@ -36,7 +36,7 @@ final class ClipboardHistory: ObservableObject {
     }
     @Published private(set) var needsPermission = false
 
-    /// All five are always kept; without Dots Pro only the newest three are shown and copyable.
+    /// All ten are always kept; without Dots Pro only the newest three are shown and copyable.
     var visibleItems: [Item] {
         ProStore.shared.isPro ? items : Array(items.prefix(ProStore.freeClipboardLimit))
     }

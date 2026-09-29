@@ -19,7 +19,7 @@ enum ProFeature: CaseIterable {
         case .cameraEffects: "Electric, fire, rainbow and cloud around your bubble."
         case .brushes: "Draw with electric, fire and rainbow ink."
         case .whiteboard: "Shapes, arrows and notes on a board that's still there tomorrow."
-        case .clipboardHistory: "Your last five copies instead of three."
+        case .clipboardHistory: "Your last ten copies instead of three."
         }
     }
 
