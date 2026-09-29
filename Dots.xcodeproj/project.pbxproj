@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		D0750000000000000000A001 /* Dots.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Dots.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D0750000000000000000A0F1 /* Dots.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Dots.storekit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -33,6 +34,7 @@
 			isa = PBXGroup;
 			children = (
 				D0750000000000000000A002 /* Dots */,
+				D0750000000000000000A0F1 /* Dots.storekit */,
 				D0750000000000000000A005 /* Products */,
 			);
 			sourceTree = "<group>";
