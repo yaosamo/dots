@@ -1,7 +1,7 @@
 // The arrow under the dots, drawn like the pen's electric brush (Dots/Shaders/PenShaders.metal):
 // the line jumps to a new jitter in ticks, with a flickering blue corona around a pale core.
 // It shoots down from the top, its head snaps open, it crackles a moment, fades, and goes again.
-// ShaderTuning: rate 10.42 ticks a second, glow radius 9.7; the brush's line is 3 points.
+// ShaderTuning: rate 10.42 ticks a second; the brush's line is 3 points. No glow here, just the lines.
 (() => {
   const canvas = document.querySelector(".electric");
   const ctx = canvas && canvas.getContext("2d");
@@ -13,8 +13,7 @@
   ctx.scale(ratio, ratio);
 
   const RATE = 10.42;
-  const GLOW = 9.7;
-  const JITTER = 2.6; // scaled down from the brush's 21.8 for a small arrow
+    const JITTER = 2.6; // scaled down from the brush's 21.8 for a small arrow
 
   // Value noise, as in Noise.h.
   const hash = (x, y) => {
@@ -87,13 +86,10 @@
       });
       return path;
     });
-    // Corona, then the core: blue (0.25, 0.6, 1) around pale (0.85, 0.95, 1).
-    ctx.shadowColor = `rgba(64, 153, 255, ${0.9 * flicker})`;
-    ctx.shadowBlur = GLOW * (1.6 + shown.flash * 1.4);
+    // No blur: a blue line (0.25, 0.6, 1) with a pale core (0.85, 0.95, 1) on it.
     ctx.strokeStyle = `rgba(64, 153, 255, ${0.85 * flicker})`;
     ctx.lineWidth = 4 + shown.flash * 2;
     paths.forEach((path) => ctx.stroke(path));
-    ctx.shadowBlur = GLOW * 0.44;
     ctx.strokeStyle = `rgba(217, 242, 255, ${shown.opacity})`;
     ctx.lineWidth = 2;
     paths.forEach((path) => ctx.stroke(path));

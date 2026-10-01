@@ -83,7 +83,7 @@ a:hover { text-decoration-thickness: 2px; }
 @keyframes descend { from { transform: translateY(-45%); opacity: 0; } }
 @keyframes drift { to { transform: translateX(-4%); } }
 
-.topbar { width: min(100%, 1200px); margin: 0 auto; padding: 22px 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; text-align: left; }
+.topbar { z-index: 20 !important; width: min(100%, 1200px); margin: 0 auto; padding: 22px 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; text-align: left; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 500; font-size: var(--step-1); text-decoration: none; margin: 0; }
 .brand img { width: 28px; height: 28px; }
 .cta { padding: 10px 20px; border-radius: 999px; background: var(--ink); color: var(--page); font-weight: 500; font-size: var(--step--1); text-decoration: none; white-space: nowrap; }
