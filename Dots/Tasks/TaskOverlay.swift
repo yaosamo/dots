@@ -49,6 +49,7 @@ final class TaskOverlayController: DotFeature {
     /// Plays the reveal backwards, then removes the panel. Every way of closing ends up here.
     func hide() {
         guard isVisible, let state, !state.isDismissing else { return }
+        state.commitEdit()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
         state.isDismissing = true
@@ -64,7 +65,12 @@ final class TaskOverlayController: DotFeature {
 }
 
 /// Keyboard selection and inline editing. ↑/↓ move between "Add a task…" and the tasks,
-/// Return (or a click) edits the selected task, Return saves, Esc cancels the edit or closes.
+/// Return (or a click) edits the selected task. Return saves and opens a new, empty task right
+/// after it, which goes away again if it's left empty. Backspace in an empty task deletes it
+/// (not a task with subtasks) and goes on editing the one above. Esc cancels the edit, then
+/// deselects, then closes.
+/// Tab makes the selected task a subtask of the one above, ⇧Tab makes it a task again, and
+/// ←/→ fold and unfold a task's subtasks.
 @MainActor
 final class TaskListState: ObservableObject {
     enum Focus: Equatable {
@@ -77,6 +83,11 @@ final class TaskListState: ObservableObject {
 
     @Published var focus: Focus = .input
     @Published var editText = ""
+    /// What's typed in "Add a task…".
+    @Published var draft = ""
+    /// The title when editing began: until it changes, ⌘Z restores a deleted task rather than
+    /// undoing typing.
+    private var editOriginal = ""
     /// Set by the controller when closing starts; the view then plays its exit.
     @Published var isDismissing = false
 
@@ -103,15 +114,38 @@ final class TaskListState: ObservableObject {
             switch focus {
             case .input: return .ignored // the field's onSubmit adds the task
             case .task(let id): beginEditing(id)
-            case .editing: commitEdit()
+            case .editing(let id): if commitEdit() { addTask(after: id) }
             }
             return .handled
-        case kVK_Escape:
-            if case .editing = focus {
-                cancelEdit()
-                return .handled
+        case kVK_Delete:
+            guard case .editing(let id) = focus, editText.isEmpty, !store.hasSubtasks(id) else { return .ignored }
+            let previous = rowAbove(id)
+            focus = .input
+            withAnimation(.spring(response: 0.3)) { store.delete(id) }
+            if let previous { beginEditing(previous) }
+            return .handled
+        case kVK_ANSI_Z where event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command:
+            return restoreDeleted() ? .handled : .ignored
+        case kVK_Tab:
+            guard let id = selectedID else { return .ignored }
+            // A new task keeps being typed into as it moves in or out; any other edit is saved.
+            if !isNew(id) { commitEdit() }
+            withAnimation(.spring(response: 0.3)) {
+                if event.modifierFlags.contains(.shift) { store.outdent(id) } else { store.indent(id) }
             }
-            return .close
+            return .handled
+        case kVK_LeftArrow, kVK_RightArrow:
+            guard case .task(let id) = focus, store.hasSubtasks(id) else { return .ignored }
+            withAnimation(.spring(response: 0.3)) { store.setCollapsed(id, Int(event.keyCode) == kVK_LeftArrow) }
+            return .handled
+        case kVK_Escape:
+            // Steps back one level at a time: the edit, then the selection, then the overlay.
+            switch focus {
+            case .editing: cancelEdit()
+            case .task: focus = .input
+            case .input: return .close
+            }
+            return .handled
         default:
             return .ignored
         }
@@ -121,13 +155,22 @@ final class TaskListState: ObservableObject {
         commitEdit()
         guard let task = store.tasks.first(where: { $0.id == id }) else { return }
         editText = task.title
+        editOriginal = task.title
         focus = .editing(id)
     }
 
-    func commitEdit() {
-        guard case .editing(let id) = focus else { return }
+    /// Saves the edit. A new task left empty goes away instead, and the row above it is selected;
+    /// returns false then.
+    @discardableResult
+    func commitEdit() -> Bool {
+        guard case .editing(let id) = focus else { return false }
+        if isNew(id), editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            discard(id)
+            return false
+        }
         store.rename(id, to: editText)
         focus = .task(id)
+        return true
     }
 
     func focusInput() {
@@ -137,11 +180,51 @@ final class TaskListState: ObservableObject {
 
     private func cancelEdit() {
         guard case .editing(let id) = focus else { return }
+        if isNew(id) { discard(id) } else { focus = .task(id) }
+    }
+
+    /// Only a task that's just been added with Return has no title.
+    private func isNew(_ id: TaskItem.ID) -> Bool {
+        store.task(id)?.title.isEmpty == true
+    }
+
+    private func addTask(after id: TaskItem.ID) {
+        guard let new = withAnimation(.spring(response: 0.3), { store.insertEmpty(after: id) }) else { return }
+        editText = ""
+        editOriginal = ""
+        focus = .editing(new)
+    }
+
+    /// While text is being typed, ⌘Z undoes the typing; otherwise it brings back the last deleted
+    /// task and selects it.
+    private func restoreDeleted() -> Bool {
+        switch focus {
+        case .input: guard draft.isEmpty else { return false }
+        case .editing: guard editText == editOriginal else { return false }
+        case .task: break
+        }
+        guard store.canRestore else { return false }
+        commitEdit()
+        guard let id = withAnimation(.spring(response: 0.3), { store.restoreDeleted() }) else { return false }
         focus = .task(id)
+        return true
+    }
+
+    /// A new task left empty: removed for good, nothing to undo.
+    private func discard(_ id: TaskItem.ID) {
+        let previous = rowAbove(id)
+        withAnimation(.spring(response: 0.3)) { store.delete(id, undoable: false) }
+        focus = previous.map(Focus.task) ?? .input
+    }
+
+    private func rowAbove(_ id: TaskItem.ID) -> TaskItem.ID? {
+        let ids = store.visibleTasks().map(\.id)
+        guard let index = ids.firstIndex(of: id), index > 0 else { return nil }
+        return ids[index - 1]
     }
 
     private func move(by step: Int) -> KeyResult {
-        let ids = store.tasks.map(\.id)
+        let ids = store.visibleTasks().map(\.id)
         switch focus {
         case .editing:
             return .ignored
@@ -171,10 +254,17 @@ struct TaskOverlayView: View {
     private enum Metrics {
         static let columnWidth: CGFloat = 780
         /// Room beside the rows so shadows aren't clipped by the scroll view and its fade mask.
-        /// Sized for the dragged row: 16pt blur plus its 1.02 scale (~8pt a side), with margin.
-        static let shadowRoom: CGFloat = 40
+        /// Sized for the dragged row: 16pt blur plus its 1.02 scale (~8pt a side), plus how far it
+        /// can be pulled sideways (`dragSlack`), with margin.
+        static let shadowRoom: CGFloat = 80
+        /// How far past either level the dragged row follows the pointer sideways.
+        static let dragSlack: CGFloat = 12
         static let topFade: CGFloat = 28
         static let bottomFade: CGFloat = 240
+        /// How far subtasks sit in. Dragging a row more than half of this to the right
+        /// (or a subtask that far left) changes its level.
+        static let indent: CGFloat = 44
+        static let rowSpacing: CGFloat = 12
     }
 
     // Entering: frost, field and the task cascade all start together.
@@ -207,10 +297,11 @@ struct TaskOverlayView: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
-    @State private var draft = ""
     /// The task being dragged to reorder, and where every row sits (list coordinates).
     @State private var drag: TaskDrag?
     @State private var rowFrames: [TaskItem.ID: CGRect] = [:]
+    /// The open editor's text field (list coordinates), where a drag selects text.
+    @State private var editorFrame: CGRect?
     @State private var isFrosted = false
     @State private var isRevealed = false
     @FocusState private var field: Field?
@@ -301,7 +392,7 @@ struct TaskOverlayView: View {
                 .font(.system(size: 24, weight: .medium))
                 .foregroundStyle(Color.primary.opacity(0.5))
                 .allowsHitTesting(false) // clicks on it reach the card below
-            TextField("Add a task…", text: $draft)
+            TextField("Add a task…", text: $state.draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 27))
                 .focused($field, equals: .input)
@@ -327,16 +418,26 @@ struct TaskOverlayView: View {
         GeometryReader { geometry in
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(Array(store.tasks.enumerated()), id: \.element.id) { index, task in
+                    let rows = visibleRows
+                    let subtaskCounts = store.subtaskCounts
+                    LazyVStack(spacing: Metrics.rowSpacing) {
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, task in
                             TaskRow(
                                 task: task,
+                                stackedSubtasks: stackedSubtasks(of: task, counts: subtaskCounts),
+                                hasSubtasks: subtaskCounts[task.id] != nil,
                                 isSelected: state.selectedID == task.id,
                                 isEditing: state.focus == .editing(task.id),
                                 editText: $state.editText,
                                 field: $field,
-                                onToggle: { withAnimation(.spring(response: 0.3)) { store.toggle(task.id) } },
+                                onToggle: { withAnimation(TaskRow.checkAnimation) { store.toggle(task.id) } },
                                 onEdit: { state.beginEditing(task.id) },
+                                onExpand: {
+                                    withAnimation(.spring(response: 0.3)) { store.setCollapsed(task.id, false) }
+                                },
+                                onFold: {
+                                    withAnimation(.spring(response: 0.3)) { store.setCollapsed(task.id, true) }
+                                },
                                 onDelete: { withAnimation(.spring(response: 0.3)) { store.delete(task.id) } }
                             )
                             .id(task.id)
@@ -344,13 +445,22 @@ struct TaskOverlayView: View {
                                 Color.clear.preference(key: RowFrames.self,
                                                        value: [task.id: geometry.frame(in: .named(Self.listSpace))])
                             })
-                            // Drag to reorder (not while editing, where a drag selects text).
-                            .gesture(reorderGesture(task.id), including: state.focus == .editing(task.id) ? .subviews : .all)
-                            // While dragged, the row itself rides above the list (below); its slot stays open.
+                            // Drag to reorder, from anywhere on the card; while editing, a drag on the
+                            // text selects it instead.
+                            .gesture(reorderGesture(task.id))
+                            // While dragged, the row itself rides above the list (below); its slot stays open,
+                            // with a block beside it while it would land as a subtask.
                             .opacity(drag?.id == task.id ? 0 : 1)
+                            .padding(.leading, task.isSubtask ? Metrics.indent : 0)
+                            .overlay(alignment: .leading) {
+                                if drag?.id == task.id, task.isSubtask {
+                                    NestBlock(indent: Metrics.indent)
+                                        .transition(.scale(scale: 0.4, anchor: .trailing).combined(with: .opacity))
+                                }
+                            }
                             .opacity(isRevealed ? 1 : 0)
                             .offset(y: isRevealed ? 0 : -14)
-                            .animation(isRevealed ? Self.cascadeIn(index) : Self.cascadeOut(index, of: store.tasks.count),
+                            .animation(isRevealed ? Self.cascadeIn(index) : Self.cascadeOut(index, of: rows.count),
                                        value: isRevealed)
                             .transition(.move(edge: .top).combined(with: .opacity))
                         }
@@ -361,6 +471,7 @@ struct TaskOverlayView: View {
                     .background(Color.clear.contentShape(Rectangle()).onTapGesture(perform: state.focusInput))
                     .coordinateSpace(name: Self.listSpace)
                     .onPreferenceChange(RowFrames.self) { rowFrames = $0 }
+                    .onPreferenceChange(EditorFrame.self) { editorFrame = $0 }
                     .overlay(alignment: .topLeading) { draggedRow }
                 }
                 .contentMargins(.horizontal, Metrics.shadowRoom, for: .scrollContent)
@@ -385,54 +496,100 @@ struct TaskOverlayView: View {
 
     // MARK: Reordering
 
-    private static let listSpace = "taskList"
+    fileprivate static let listSpace = "taskList"
+
+    /// The rows on screen; a dragged task's subtasks are tucked away while it moves.
+    private var visibleRows: [TaskItem] {
+        store.visibleTasks(dragging: drag?.id)
+    }
 
     /// The dragged task follows the pointer; as its center passes a neighbor's middle, the list
-    /// reorders (the neighbors slide), so the drop only has to settle it into its slot.
+    /// reorders (the neighbors slide), so the drop only has to settle it into its slot. Sideways,
+    /// its left edge picks the level: past half an indent it's a subtask of the task above.
     private func reorderGesture(_ id: TaskItem.ID) -> some Gesture {
         DragGesture(minimumDistance: 4, coordinateSpace: .named(Self.listSpace))
             .onChanged { value in
                 if drag == nil {
                     guard let frame = rowFrames[id] else { return }
-                    drag = TaskDrag(id: id, grab: value.startLocation.y - frame.minY, top: frame.minY)
+                    if state.focus == .editing(id) {
+                        if let editorFrame, editorFrame.contains(value.startLocation) { return }
+                        // Picked up by the card: the edit is saved and the task moves.
+                        state.commitEdit()
+                    }
+                    let started = TaskDrag(id: id, grab: value.startLocation.y - frame.minY, startLeft: frame.minX,
+                                           top: frame.minY, left: frame.minX)
+                    // Its subtasks fold away under it for the ride.
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { drag = started }
                 }
                 guard var current = drag, current.id == id, let frame = rowFrames[id] else { return }
                 current.top = value.location.y - current.grab
+                current.left = min(max(current.startLeft + value.translation.width, -Metrics.dragSlack),
+                                   Metrics.indent + Metrics.dragSlack)
                 drag = current
-                reorder(id, center: current.top + frame.height / 2)
+                reposition(current, height: frame.height)
             }
             .onEnded { _ in
                 guard let frame = rowFrames[id] else {
                     drag = nil
                     return
                 }
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) { drag?.top = frame.minY }
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                    drag?.top = frame.minY
+                    drag?.left = frame.minX
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    if drag?.id == id { drag = nil }
+                    guard drag?.id == id else { return }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        drag = nil
+                        store.reveal(id)
+                    }
                 }
             }
     }
 
-    private func reorder(_ id: TaskItem.ID, center: CGFloat) {
-        let ids = store.tasks.map(\.id)
-        guard let index = ids.firstIndex(of: id) else { return }
-        if index > 0, let above = rowFrames[ids[index - 1]], center < above.midY {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.move(id, to: ids[index - 1]) }
-        } else if index < ids.count - 1, let below = rowFrames[ids[index + 1]], center > below.midY {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.move(id, to: ids[index + 1]) }
+    /// Moves the dragged task one slot toward the pointer when it passes a neighbor, and sets its
+    /// level from where its left edge is.
+    private func reposition(_ drag: TaskDrag, height: CGFloat) {
+        let ids = visibleRows.map(\.id)
+        guard let position = ids.firstIndex(of: drag.id), let task = store.task(drag.id) else { return }
+        var others = ids
+        others.remove(at: position)
+
+        // The slot is the gap in `others` it sits in.
+        let center = drag.top + height / 2
+        var slot = position
+        if slot > 0, let above = rowFrames[others[slot - 1]], center < above.midY {
+            slot -= 1
+        } else if slot < others.count, let below = rowFrames[others[slot]], center > below.midY {
+            slot += 1
+        }
+
+        // At the very top only a task. Dropped as a task among subtasks, it takes the ones below it;
+        // as a subtask, a task's own subtasks come along and join the task above, as with Tab.
+        let asSubtask = slot > 0 && drag.left > Metrics.indent / 2
+        guard slot != position || asSubtask != task.isSubtask else { return }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            store.place(drag.id, after: slot > 0 ? others[slot - 1] : nil, asSubtask: asSubtask)
         }
     }
 
-    /// The task being dragged, lifted above the list at the pointer.
+    /// A collapsed task, or one being dragged, shows its subtasks as a stack under it.
+    private func stackedSubtasks(of task: TaskItem, counts: [TaskItem.ID: Int]) -> Int {
+        task.isCollapsed || drag?.id == task.id ? counts[task.id] ?? 0 : 0
+    }
+
+    /// The task being dragged, lifted above the list at the pointer. It takes on the look of the
+    /// level it would land at.
     @ViewBuilder
     private var draggedRow: some View {
-        if let drag, let task = store.tasks.first(where: { $0.id == drag.id }), let frame = rowFrames[drag.id] {
-            TaskRow(task: task, isSelected: true, isEditing: false, editText: .constant(""), field: $field,
-                    onToggle: {}, onEdit: {}, onDelete: {})
-                .frame(width: frame.width)
+        if let drag, let task = store.task(drag.id), rowFrames[drag.id] != nil {
+            TaskRow(task: task, stackedSubtasks: stackedSubtasks(of: task, counts: store.subtaskCounts),
+                    hasSubtasks: false, isSelected: true, isEditing: false, editText: .constant(""), field: $field,
+                    onToggle: {}, onEdit: {}, onExpand: {}, onFold: {}, onDelete: {})
+                .frame(width: Metrics.columnWidth - (task.isSubtask ? Metrics.indent : 0))
                 .scaleEffect(1.02)
                 .shadow(color: .black.opacity(0.18), radius: 16, y: 8)
-                .offset(x: frame.minX, y: drag.top)
+                .offset(x: drag.left, y: drag.top)
                 .allowsHitTesting(false)
         }
     }
@@ -448,61 +605,89 @@ struct TaskOverlayView: View {
     }
 
     private func add() {
-        withAnimation(.spring(response: 0.3)) { store.add(draft) }
-        draft = ""
+        withAnimation(.spring(response: 0.3)) { store.add(state.draft) }
+        state.draft = ""
     }
 }
 
 private struct TaskRow: View {
     let task: TaskItem
+    /// Folded subtasks, drawn as a stack peeking out under the card.
+    let stackedSubtasks: Int
+    /// Has subtasks, so hovering shows a button to fold or unfold them.
+    let hasSubtasks: Bool
     let isSelected: Bool
     let isEditing: Bool
     @Binding var editText: String
     var field: FocusState<TaskOverlayView.Field?>.Binding
     let onToggle: () -> Void
     let onEdit: () -> Void
+    let onExpand: () -> Void
+    let onFold: () -> Void
     let onDelete: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var isHovering = false
-    /// Done tasks squeeze down, but only after the checkmark has landed so the two don't fight.
-    @State private var isCompact: Bool
 
-    /// How long the checkmark plays at full size before the row squeezes.
-    private static let compactDelay: Duration = .milliseconds(350)
+    /// Checking or unchecking: the checkmark and the row's resize run as one.
+    static let checkAnimation = Animation.snappy(duration: 0.25, extraBounce: 0.15)
 
-    init(task: TaskItem, isSelected: Bool, isEditing: Bool, editText: Binding<String>,
-         field: FocusState<TaskOverlayView.Field?>.Binding,
-         onToggle: @escaping () -> Void, onEdit: @escaping () -> Void, onDelete: @escaping () -> Void) {
+    init(task: TaskItem, stackedSubtasks: Int, hasSubtasks: Bool, isSelected: Bool, isEditing: Bool,
+         editText: Binding<String>, field: FocusState<TaskOverlayView.Field?>.Binding,
+         onToggle: @escaping () -> Void, onEdit: @escaping () -> Void, onExpand: @escaping () -> Void,
+         onFold: @escaping () -> Void, onDelete: @escaping () -> Void) {
         self.task = task
+        self.stackedSubtasks = stackedSubtasks
+        self.hasSubtasks = hasSubtasks
         self.isSelected = isSelected
         self.isEditing = isEditing
         _editText = editText
         self.field = field
         self.onToggle = onToggle
         self.onEdit = onEdit
+        self.onExpand = onExpand
+        self.onFold = onFold
         self.onDelete = onDelete
-        _isCompact = State(initialValue: task.isDone)
     }
+
+    /// Subtasks are a size down from tasks; done rows of either squeeze further, in the same
+    /// animation as the checkmark.
+    private var metrics: RowMetrics { RowMetrics(isSubtask: task.isSubtask, isCompact: task.isDone) }
 
     var body: some View {
         let palette = TaskPalette(scheme: colorScheme)
-        HStack(spacing: 18) {
+        let metrics = metrics
+        HStack(spacing: metrics.spacing) {
             Button(action: onToggle) {
-                Image(systemName: task.isDone ? "checkmark.circle.fill" : "circle")
-                    .contentTransition(.symbolEffect(.replace))
-                    .font(.system(size: isCompact ? 20 : 28))
-                    .foregroundStyle(task.isDone ? Color.green : Color.secondary)
+                // Sized by frame, not font, so it shrinks along with the row instead of jumping. The
+                // fill scales in from the circle's center, and back into it when unchecked.
+                ZStack {
+                    Image(systemName: "circle")
+                        .resizable()
+                        .foregroundStyle(Color.secondary)
+                        .opacity(task.isDone ? 0 : 1)
+                    Image(systemName: "checkmark.circle.fill")
+                        .resizable()
+                        .foregroundStyle(Color.green)
+                        .scaleEffect(task.isDone ? 1 : 0.2, anchor: .center)
+                        .opacity(task.isDone ? 1 : 0)
+                }
+                .aspectRatio(contentMode: .fit)
+                .frame(width: metrics.checkmark, height: metrics.checkmark)
             }
             .buttonStyle(.plain)
 
             Group {
                 if isEditing {
                     // Wraps and grows so long tasks can be edited in full.
-                    TextField("", text: $editText, axis: .vertical)
+                    TextField("", text: $editText, prompt: Text("Add a task…"), axis: .vertical)
                         .lineLimit(1...8)
                         .textFieldStyle(.plain)
                         .focused(field, equals: .editor)
+                        .background(GeometryReader { geometry in
+                            Color.clear.preference(key: EditorFrame.self,
+                                                   value: geometry.frame(in: .named(TaskOverlayView.listSpace)))
+                        })
                 } else {
                     Text(task.title)
                         .strikethrough(task.isDone)
@@ -512,9 +697,25 @@ private struct TaskRow: View {
                         .onTapGesture(perform: onEdit)
                 }
             }
-            .font(.system(size: isCompact ? 16 : 22))
+            .font(.system(size: metrics.title))
 
-            let showsTrash = isHovering || isEditing
+            if hasSubtasks {
+                let showsFold = isHovering
+                Button(action: task.isCollapsed ? onExpand : onFold) {
+                    Image(systemName: task.isCollapsed ? "rectangle.expand.vertical" : "rectangle.compress.vertical")
+                        .font(.system(size: 17, weight: .medium))
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(task.isCollapsed ? "Unfold subtasks" : "Fold subtasks")
+                .opacity(showsFold ? 1 : 0)
+                .scaleEffect(showsFold ? 1 : 0.6)
+                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: showsFold)
+                .allowsHitTesting(showsFold)
+            }
+
+            let showsTrash = isEditing
             Button(action: onDelete) {
                 Image(systemName: "trash.fill").font(.system(size: 18))
             }
@@ -526,12 +727,12 @@ private struct TaskRow: View {
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: showsTrash)
             .allowsHitTesting(showsTrash)
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, metrics.horizontalPadding)
         // Done tasks squeeze down so they read as packed away.
-        .padding(.vertical, isCompact ? 6 : 19)
+        .padding(.vertical, metrics.verticalPadding)
         .background(
             // A click anywhere on the card edits the task (or keeps its editor focused).
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous)
                 .fill(isSelected ? palette.selectedCard : palette.card)
                 .onTapGesture {
                     if isEditing { field.wrappedValue = .editor } else { onEdit() }
@@ -539,25 +740,109 @@ private struct TaskRow: View {
                 .shadow(color: isSelected ? palette.selectedShadow : .clear, radius: 10, y: 4)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous)
                 .strokeBorder(isSelected ? palette.selectedBorder : .clear)
         )
+        .padding(.bottom, CGFloat(min(stackedSubtasks, 2)) * SubtaskStack.layerPeek)
+        .background {
+            // A click on the stack unfolds it.
+            let layers = min(stackedSubtasks, 2)
+            SubtaskStack(layers: layers, cornerRadius: metrics.cornerRadius, fill: palette.card)
+                .contentShape(SubtaskStack.Peek(layers: layers, cornerRadius: metrics.cornerRadius))
+                .onTapGesture(perform: onExpand)
+        }
         .onHover { isHovering = $0 }
-        .task(id: task.isDone) {
-            guard task.isDone != isCompact else { return }
-            if task.isDone { try? await Task.sleep(for: Self.compactDelay) }
-            guard !Task.isCancelled else { return }
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { isCompact = task.isDone }
+    }
+}
+
+private struct RowMetrics {
+    let isSubtask: Bool
+    let isCompact: Bool
+
+    var checkmark: CGFloat { isSubtask ? (isCompact ? 17 : 22) : (isCompact ? 20 : 28) }
+    var title: CGFloat { isSubtask ? (isCompact ? 15 : 18) : (isCompact ? 16 : 22) }
+    var spacing: CGFloat { isSubtask ? 14 : 18 }
+    var horizontalPadding: CGFloat { isSubtask ? 20 : 24 }
+    var verticalPadding: CGFloat { isSubtask ? (isCompact ? 5 : 13) : (isCompact ? 6 : 19) }
+    var cornerRadius: CGFloat { isSubtask ? 15 : 18 }
+}
+
+/// A task being dragged, in list coordinates: `grab` is where the pointer holds it (from the row's
+/// top), `top` and `left` where the lifted row is drawn, `startLeft` where it was picked up.
+private struct TaskDrag: Equatable {
+    let id: TaskItem.ID
+    let grab: CGFloat
+    let startLeft: CGFloat
+    var top: CGFloat
+    var left: CGFloat
+}
+
+/// Beside the open slot of the row being dragged while it would land as a subtask, in the indent.
+private struct NestBlock: View {
+    let indent: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(Color.primary.opacity(0.22))
+            .frame(width: 12)
+            .padding(.vertical, 4)
+            .frame(width: indent)
+            .allowsHitTesting(false)
+    }
+}
+
+/// Folded subtasks: up to two cards peeking out under the task's card, each a little narrower.
+/// Fills the row, card and peek together. Only the peeking edges are drawn, so the translucent
+/// cards don't darken the one on top.
+private struct SubtaskStack: View {
+    static let layerPeek: CGFloat = 6
+    static let layerInset: CGFloat = 14
+
+    let layers: Int
+    let cornerRadius: CGFloat
+    let fill: Color
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<layers, id: \.self) { layer in
+                Peek(layers: layers, cornerRadius: cornerRadius, only: layer + 1)
+                    .fill(fill.opacity(layer == 0 ? 1 : 0.6))
+            }
+        }
+        .allowsHitTesting(layers > 0)
+    }
+
+    /// The stack's peeking edges in a row `rect` whose card is the top part; `only` keeps one layer.
+    struct Peek: Shape {
+        let layers: Int
+        let cornerRadius: CGFloat
+        var only: Int?
+
+        func path(in rect: CGRect) -> Path {
+            guard layers > 0 else { return Path() }
+            var card = rect
+            card.size.height -= CGFloat(layers) * SubtaskStack.layerPeek
+            var covered = Path(roundedRect: card, cornerRadius: cornerRadius, style: .continuous)
+            var result = Path()
+            for layer in 1...layers {
+                let shape = Path(roundedRect: card
+                    .insetBy(dx: CGFloat(layer) * SubtaskStack.layerInset, dy: 0)
+                    .offsetBy(dx: 0, dy: CGFloat(layer) * SubtaskStack.layerPeek),
+                    cornerRadius: cornerRadius, style: .continuous)
+                if only == nil || only == layer { result.addPath(shape.subtracting(covered)) }
+                covered = covered.union(shape)
+            }
+            return result
         }
     }
 }
 
-/// A task being dragged: `grab` is where the pointer holds it (from the row's top), `top` where the
-/// lifted row is drawn, both in list coordinates.
-private struct TaskDrag: Equatable {
-    let id: TaskItem.ID
-    let grab: CGFloat
-    var top: CGFloat
+private struct EditorFrame: PreferenceKey {
+    static let defaultValue: CGRect? = nil
+
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
+        value = nextValue() ?? value
+    }
 }
 
 private struct RowFrames: PreferenceKey {
