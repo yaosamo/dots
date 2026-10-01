@@ -148,6 +148,14 @@
   </footer>
 
   <script>
+    // The App Store page: set it once Dots is live, and the button turns into a download link.
+    const APP_STORE_URL = "";
+    document.querySelectorAll(".cta").forEach((button) => {
+      if (!APP_STORE_URL) return;
+      button.href = APP_STORE_URL;
+      button.removeAttribute("aria-disabled");
+      button.textContent = "Download on the Mac App Store";
+    });
     // Clips play while on screen (not for reduced motion); each card's button pauses its own.
     const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const cards = [...document.querySelectorAll(".features article")];

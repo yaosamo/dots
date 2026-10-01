@@ -167,6 +167,17 @@ kbd {
 .dots li:has(.dot:hover) .tip, .dots li:has(.dot:focus-visible) .tip, .dots li:has(.dot[aria-pressed="true"]) .tip { opacity: 1; visibility: visible; translate: -50% 0; }
 
 
+/* The store button stays in the top right corner, over the page, as you scroll. */
+.topbar .cta {
+  position: fixed;
+  top: 18px;
+  right: max(16px, calc((100vw - 1200px) / 2));
+  z-index: 10;
+  box-shadow: 0 10px 28px -10px rgb(10 15 30 / 0.45);
+}
+a.cta[href]:hover { transform: scale(1.03); }
+.cta { transition: transform 0.2s ease; }
+
 /* The post on X, right under the welcome; until X's script turns it into the post, a plain link. */
 .post { width: min(100% - 32px, 560px); margin: 40px auto 0; display: flex; justify-content: center; }
 .post .twitter-tweet { margin: 0 !important; }
