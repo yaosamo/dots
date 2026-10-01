@@ -5,6 +5,7 @@ import Foundation
 final class DotSettings: ObservableObject {
     private static let enabledKey = "dots.enabled"
     private static let welcomeKey = "dots.hasCompletedWelcome"
+    private static let hidesBarKey = "dots.hidesBar"
 
     /// In bar order, which is always `Dot.allCases` order.
     @Published private(set) var enabled: [Dot]
@@ -12,6 +13,13 @@ final class DotSettings: ObservableObject {
     var hasCompletedWelcome: Bool {
         get { UserDefaults.standard.bool(forKey: Self.welcomeKey) }
         set { UserDefaults.standard.set(newValue, forKey: Self.welcomeKey) }
+    }
+
+    /// "Hide Dots" (menu bar menu): no bar on screen; the enabled tools still open by shortcut
+    /// and from the menu.
+    var hidesBar: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.hidesBarKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.hidesBarKey) }
     }
 
     /// The + dot shows while some tool is still off.

@@ -70,7 +70,9 @@ final class DotsBarController {
     /// Also resizes the bar to the enabled dots, so call it after they change.
     /// `dropIn`: the dots fall in one after another (at launch). Otherwise they're simply there,
     /// e.g. after the welcome, whose own dots have just landed in their places.
+    /// Does nothing while "Hide Dots" is on.
     func show(dropIn: Bool = false) {
+        guard !settings.hidesBar else { return }
         position(reachingTop: dropIn)
         if dropIn { entrance.hasLanded = false }
         panel.orderFrontRegardless()

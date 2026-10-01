@@ -63,6 +63,12 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         welcome.target = self
         menu.addItem(welcome)
 
+        let hideDots = NSMenuItem(title: "Hide Dots", action: #selector(toggleHideDots), keyEquivalent: "")
+        hideDots.target = self
+        hideDots.state = coordinator.settings.hidesBar ? .on : .off
+        hideDots.toolTip = "Keep the dot bar off the screen. The shortcuts still open every tool."
+        menu.addItem(hideDots)
+
         let alwaysDark = NSMenuItem(title: "Always Dark Mode", action: #selector(toggleAlwaysDark), keyEquivalent: "")
         alwaysDark.target = self
         alwaysDark.state = DotsAppearance.isAlwaysDark ? .on : .off
@@ -95,6 +101,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     @objc private func showWelcome() {
         coordinator.showWelcome()
+    }
+
+    @objc private func toggleHideDots() {
+        coordinator.setHidesBar(!coordinator.settings.hidesBar)
     }
 
     @objc private func toggleAlwaysDark() {

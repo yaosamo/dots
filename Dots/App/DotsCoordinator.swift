@@ -129,6 +129,12 @@ final class DotsCoordinator: ObservableObject {
         }
     }
 
+    /// "Hide Dots": takes the bar off the screen, or brings it back with the launch drop-in.
+    func setHidesBar(_ hides: Bool) {
+        settings.hidesBar = hides
+        if hides { bar?.hide() } else { bar?.show(dropIn: true) }
+    }
+
     /// First-launch welcome: frost, the dots appear, then the user picks which to keep.
     func showWelcome() {
         present(.welcome)
