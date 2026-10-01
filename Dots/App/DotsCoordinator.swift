@@ -10,7 +10,7 @@ enum Dot: Int, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .camera: "Selfie camera"
+        case .camera: "Blob camera"
         case .tasks: "Tasks"
         case .pen: "Draw on screen"
         case .timer: "Timer"
@@ -21,7 +21,7 @@ enum Dot: Int, CaseIterable, Identifiable {
     /// One or two sentences for the welcome and setup cards.
     var summary: String {
         switch self {
-        case .camera: "A floating selfie bubble for calls and recordings. Resize it, reshape it, drag it anywhere."
+        case .camera: "A floating camera bubble for calls and recordings. Resize it, reshape it, drag it anywhere."
         case .tasks: "A quick list over everything. Jot a task, check it off, get back to work."
         case .pen: "Draw on any screen, spotlight what matters, or sketch on a whiteboard."
         case .timer: "A little die that tumbles to the bottom of your screen and counts down. Click to start."
