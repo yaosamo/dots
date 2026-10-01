@@ -9,6 +9,7 @@
   --timer: #af52de;
   --clipboard: #007aff;
   --focus: #007aff;
+  --page-below: var(--page);
 
   --step--1: 0.875rem;
   --step-0: 1.0625rem;
@@ -44,19 +45,28 @@ a { color: inherit; text-underline-offset: 0.2em; text-decoration-thickness: 1px
 a:hover { text-decoration-thickness: 2px; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 6px; }
 
-/* The welcome, as the app plays it: clouds come down, then the dots, one by one. */
-.welcome {
+/* The top: sky and clouds full width, the bar over them, the floating dots, the welcome's words. */
+/* Always light, like the app's welcome: dark text and white dots on the sky, in either mode. */
+.hero {
   position: relative;
-  min-height: 100svh;
-  display: grid;
-  place-items: center;
   overflow: hidden;
-  background: linear-gradient(var(--sky) 20%, var(--page) 95%);
-  padding: 96px 16px 72px;
+  padding: 0 16px 56px;
+  text-align: center;
+  color-scheme: light;
+  --sky: #c9dcf6;
+  --ink: #1d1d1f;
+  --ink-soft: #5d6270;
+  --page: #ffffff;
+  color: var(--ink);
+  /* Blue enough for white clouds to read; white under the words, then into the page's colour. */
+  background: linear-gradient(#9fc2f0 0%, #c9dcf6 34%, #fff 72%, #fff 86%, var(--page-below) 100%);
 }
+.hero > :not(.clouds, .clouds-canvas) { position: relative; z-index: 1; }
+.clouds-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; -webkit-mask: linear-gradient(#000 72%, transparent 88%); mask: linear-gradient(#000 72%, transparent 88%); }
+.hero.has-clouds .clouds { display: none; }
 .clouds {
   position: absolute;
-  inset: -12% -10% auto;
+  inset: -14% -10% auto;
   height: 62%;
   pointer-events: none;
   animation: descend 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
@@ -73,33 +83,24 @@ a:hover { text-decoration-thickness: 2px; }
 @keyframes descend { from { transform: translateY(-45%); opacity: 0; } }
 @keyframes drift { to { transform: translateX(-4%); } }
 
-.stage {
-  position: relative;
-  z-index: 1;
-  width: min(100%, 640px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-}
+.topbar { width: min(100%, 1200px); margin: 0 auto; padding: 22px 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; text-align: left; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 500; font-size: var(--step-1); text-decoration: none; margin: 0; }
+.brand img { width: 28px; height: 28px; }
+.cta { padding: 10px 20px; border-radius: 999px; background: var(--ink); color: var(--page); font-weight: 500; font-size: var(--step--1); text-decoration: none; white-space: nowrap; }
+.cta[aria-disabled="true"] { cursor: default; }
 
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 500; font-size: var(--step-0); margin: 0 0 56px; }
-.brand img { width: 32px; height: 32px; }
-
-/* The card for the clicked dot sits above the row, in a slot that keeps its height. */
-.preview-slot { min-height: 150px; width: 100%; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 28px; }
-.preview {
-  width: min(100%, 360px);
-  text-align: left;
-  background: var(--page);
-  border-radius: 20px;
-  padding: 18px 20px;
-  box-shadow: 0 18px 40px -18px rgb(20 30 60 / 0.35), 0 0 0 1px rgb(20 30 60 / 0.06);
-  transition: opacity 0.2s ease, transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+/* Headline and section titles: one style, the headline just bigger. */
+.hero h1, .features h2 {
+  font-weight: 400;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  text-wrap: balance;
+  margin: 0 auto;
 }
-.preview[hidden] { display: block; visibility: hidden; opacity: 0; transform: translateY(8px) scale(0.98); }
-.preview h2 { font-size: var(--step-1); font-weight: 500; margin: 0 0 4px; display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
-.preview p { margin: 0; color: var(--ink-soft); font-size: var(--step--1); line-height: 1.45; }
+.hero h1 { font-size: clamp(2.5rem, 1.4rem + 4.4vw, 4.75rem); max-width: 18ch; margin-top: clamp(32px, 6vw, 72px); animation: appear 0.6s ease-out both 0.2s; }
+.features h2 { font-size: clamp(2rem, 1.3rem + 2.6vw, 3.25rem); text-align: center; }
+.requirement { margin: 18px 0 0; color: var(--ink-soft); font-size: var(--step--1); animation: appear 0.6s ease-out both 0.4s; }
+@keyframes appear { from { opacity: 0; transform: translateY(10px); } }
 
 kbd {
   font: 500 0.8125rem/1 "Figtree", system-ui, sans-serif;
@@ -110,87 +111,111 @@ kbd {
   white-space: nowrap;
 }
 
-.dots { list-style: none; display: flex; gap: clamp(14px, 4vw, 40px); margin: 0; padding: 0; }
+/* White dots, bigger, bobbing gently each on its own beat (the app: 4pt at 1.7 rad/s, 1.3 rad apart). */
+.dots { list-style: none; display: flex; justify-content: center; gap: clamp(16px, 4.5vw, 56px); margin: clamp(48px, 7vw, 80px) 0 0; padding: 0; }
+.dots li { position: relative; animation: bob 1.85s ease-in-out infinite alternate; animation-delay: calc(var(--i) * -0.76s); }
+@keyframes bob { from { transform: translateY(-4px); } to { transform: translateY(4px); } }
 .dot {
-  --size: clamp(52px, 13vw, 88px);
+  --size: clamp(56px, 11vw, 112px);
   width: var(--size);
   height: var(--size);
   border-radius: 50%;
   border: 0;
-  background: var(--tint);
-  color: #fff;
+  background: #fff;
+  color: var(--tint);
   display: grid;
   place-items: center;
   cursor: pointer;
-  box-shadow: 0 12px 28px -10px color-mix(in srgb, var(--tint) 75%, transparent);
-  transition: transform 0.25s cubic-bezier(0.3, 1.6, 0.5, 1);
-  animation: emerge 0.9s ease-out both;
-  animation-delay: calc(0.8s + var(--i) * 0.35s);
+  box-shadow: 0 6px 28px rgb(0 0 0 / 0.14);
+  transition: transform 0.35s cubic-bezier(0.3, 1.6, 0.5, 1), box-shadow 0.3s ease, background-color 0.25s ease;
+  /* Backwards only: once in, the entrance lets go of the transform, so hovering can ease it. */
+  animation: emerge 0.9s ease-out backwards;
+  animation-delay: calc(0.8s + var(--i) * 0.3s);
 }
-.dot svg { width: 42%; height: 42%; }
-.dot:hover { transform: scale(1.06); }
-.dot[aria-pressed="true"] { outline: 2.5px solid var(--tint); outline-offset: 6px; }
-@keyframes emerge { from { opacity: 0; transform: scale(0.8); filter: blur(14px); } }
+/* The app's SF Symbol for the tool jumps in on hover, from the dot's lower right, like in the bar. */
+.dot .glyph { width: 42%; height: 42%; object-fit: contain; opacity: 0; transform: translate(20%, 20%) scale(0.4); transition: opacity 0.2s ease, transform 0.4s cubic-bezier(0.3, 1.6, 0.5, 1), filter 0.25s ease; }
+.dot:hover, .dot:focus-visible, .dot[aria-pressed="true"] { transform: scale(1.12); box-shadow: 0 10px 34px rgb(0 0 0 / 0.18); }
+.dot:hover .glyph, .dot:focus-visible .glyph, .dot[aria-pressed="true"] .glyph { opacity: 1; transform: none; }
+/* Clicked: the tool's colour with a white symbol, like a dot that's on in the app's bar. */
+.dot[aria-pressed="true"] { background: var(--tint); box-shadow: 0 10px 30px -6px color-mix(in srgb, var(--tint) 70%, transparent); }
+.dot[aria-pressed="true"] .glyph { filter: brightness(0) invert(1); }
+@keyframes emerge { from { opacity: 0; transform: scale(0.8); filter: blur(18px); } }
 
-.message {
-  font-weight: 300;
-  font-size: var(--step-2);
-  line-height: 1.25;
-  letter-spacing: -0.01em;
-  max-width: 26ch;
-  margin: 48px 0 12px;
-  text-wrap: balance;
-  animation: appear 0.6s ease-out both 3s;
+.down { display: block; width: 48px; margin: clamp(28px, 4vw, 44px) auto 0; animation: appear 0.6s ease-out both 2.4s; }
+.electric { display: block; width: 48px; height: 104px; }
+
+/* Each dot's card, right above it. */
+.tip {
+  z-index: 2;
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 20px);
+  width: min(300px, 80vw);
+  translate: -50% 6px;
+  text-align: left;
+  background: var(--page);
+  border-radius: 18px;
+  padding: 14px 16px;
+  box-shadow: 0 18px 40px -18px rgb(20 30 60 / 0.35), 0 0 0 1px rgb(20 30 60 / 0.06);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.18s ease, translate 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0.18s;
 }
-.hint { margin: 0; color: var(--ink-soft); font-size: var(--step-0); font-weight: 300; animation: appear 0.6s ease-out both 3.6s; }
-@keyframes appear { from { opacity: 0; transform: translateY(10px); } }
+.tip h2 { font-size: var(--step-0); font-weight: 500; margin: 0 0 4px; display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.tip p { margin: 0; color: var(--ink-soft); font-size: var(--step--1); line-height: 1.45; }
+.dots li:has(.dot:hover) .tip, .dots li:has(.dot:focus-visible) .tip, .dots li:has(.dot[aria-pressed="true"]) .tip { opacity: 1; visibility: visible; translate: -50% 0; }
 
-.download {
-  display: inline-block;
-  margin-top: 32px;
-  padding: 13px 30px;
-  border-radius: 999px;
-  background: var(--ink);
-  color: var(--page);
-  font-weight: 500;
-  text-decoration: none;
-  animation: appear 0.6s ease-out both 3.6s;
+
+/* Below the welcome: one feature after another, down a single column. */
+.features { width: min(100% - 32px, 760px); margin: 40px auto 0; display: grid; gap: 120px; }
+.features article { display: grid; gap: 6px; }
+.stage-card {
+  position: relative;
+  border-radius: 32px;
+  padding: 64px 48px 72px;
+  background:
+    radial-gradient(80% 70% at 15% 100%, color-mix(in srgb, var(--tint) 22%, transparent), transparent 70%),
+    radial-gradient(60% 60% at 100% 0%, color-mix(in srgb, var(--tint) 12%, transparent), transparent 70%),
+    color-mix(in srgb, var(--ink) 4%, var(--page));
+  margin-bottom: 22px;
 }
-.download[aria-disabled="true"] { cursor: default; }
-.requirement { margin: 12px 0 0; color: var(--ink-soft); font-size: var(--step--1); animation: appear 0.6s ease-out both 3.6s; }
-
-/* Below the welcome: each tool as a short looping clip. */
-.snippets { width: min(100% - 32px, 1040px); margin: 32px auto 0; }
-.snippets h2 { font-weight: 300; font-size: var(--step-2); letter-spacing: -0.01em; text-align: center; margin: 0 0 40px; }
-.snippets ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 48px 32px; }
-.snippets li { display: grid; grid-template-columns: 12px 1fr auto; gap: 6px 12px; align-items: center; align-content: start; }
-.snippets video {
-  grid-column: 1 / -1;
+.stage-card video {
+  display: block;
   width: 100%;
   aspect-ratio: 16 / 10;
   object-fit: cover;
-  border-radius: 16px;
+  border-radius: 18px;
   background: color-mix(in srgb, var(--tint) 18%, var(--page));
-  box-shadow: 0 18px 40px -22px rgb(20 30 60 / 0.45), 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent);
-  margin-bottom: 12px;
+  box-shadow: 0 24px 48px -24px rgb(20 30 60 / 0.45), 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent);
 }
-.snippets li::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--tint); grid-row: 2; }
-.snippets h3 { margin: 0; font-size: var(--step-1); font-weight: 500; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
-.snippets kbd { justify-self: end; }
-.snippets p { grid-column: 2 / -1; margin: 0; color: var(--ink-soft); max-width: 52ch; }
-.new {
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  color: color-mix(in srgb, var(--tint) 70%, var(--ink));
-  background: color-mix(in srgb, var(--tint) 16%, transparent);
-  border-radius: 999px;
-  padding: 3px 9px;
+.pause {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  translate: -50% 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+.pause svg { width: 12px; height: 12px; fill: currentColor; }
+.pause[aria-pressed="true"] svg { display: none; }
+.pause[aria-pressed="true"]::after { content: ""; margin-left: 2px; border-left: 9px solid currentColor; border-block: 6px solid transparent; }
+.features h3 { margin: 0; padding: 0 8px; font-size: var(--step-1); font-weight: 500; display: flex; align-items: center; gap: 10px; }
+.features p { margin: 0; padding: 0 8px; color: var(--ink-soft); font-size: var(--step-1); font-weight: 300; }
+@media (max-width: 520px) {
+  .features { gap: 80px; }
+  .stage-card { padding: 56px 14px 60px; border-radius: 24px; }
 }
 
-.promise { width: min(100% - 32px, 600px); margin: 96px auto 0; font-weight: 300; font-size: var(--step-1); line-height: 1.4; }
 
-footer { width: min(100% - 32px, 600px); margin: 72px auto 0; padding: 24px 0 48px; display: flex; flex-wrap: wrap; gap: 8px 24px; color: var(--ink-soft); font-size: var(--step--1); border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
+footer { width: min(100% - 32px, 760px); margin: 140px auto 0; padding: 24px 0 48px; display: flex; flex-wrap: wrap; gap: 8px 24px; color: var(--ink-soft); font-size: var(--step--1); border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
 footer .spacer { flex: 1; }
 
 /* Privacy and Support: one readable column. */
@@ -203,13 +228,16 @@ footer .spacer { flex: 1; }
 .page footer { width: 100%; }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .clouds { opacity: 0.85; }
+  :root:not([data-theme="light"]) .clouds { opacity: 0.5; }
 }
-:root[data-theme="dark"] .clouds { opacity: 0.85; }
+:root[data-theme="dark"] .clouds { opacity: 0.5; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 @media (max-width: 520px) {
-  .preview-slot { min-height: 170px; }
+  .cta { padding: 8px 14px; }
+  .dots li:first-child .tip { left: 0; translate: 0 6px; }
+  .dots li:last-child .tip { left: auto; right: 0; translate: 0 6px; }
+  .dots li:is(:first-child, :last-child):has(.dot:hover, .dot[aria-pressed="true"]) .tip { translate: 0 0; }
 }

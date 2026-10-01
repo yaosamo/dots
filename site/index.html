@@ -17,102 +17,118 @@
 </head>
 <body>
   <main>
-    <section class="welcome" aria-labelledby="message">
-      <!-- Rendered once from noise-warped shapes (a live SVG filter here was slow in Safari). -->
+    <section class="hero" aria-labelledby="message">
+      <!-- The welcome's clouds, drawn live by clouds.js (the app's cloud shader). -->
+      <canvas class="clouds-canvas" aria-hidden="true"></canvas>
+      <!-- Without WebGL: the clouds rendered once, as a picture. -->
       <div class="clouds" aria-hidden="true"><img src="clouds.png" alt="" width="2400" height="840"></div>
+      <header class="topbar">
+        <a class="brand" href="/"><img src="icon.png" alt="" width="28" height="28">Dots &amp; Clouds</a>
+        <a class="cta" aria-disabled="true">Coming soon to the Mac App Store</a>
+      </header>
 
-      <div class="stage">
-        <p class="brand"><img src="icon.png" alt="" width="32" height="32">Dots &amp; Clouds</p>
 
-        <div class="preview-slot">
-          <div class="preview" id="preview" role="region" aria-live="polite" aria-label="What this dot does" hidden>
-            <h2><span id="preview-title"></span> <kbd id="preview-key"></kbd></h2>
-            <p id="preview-text"></p>
-          </div>
-        </div>
+      <h1 id="message">Hello, we’re dots – small and fun everyday tools for your computer</h1>
+      <p class="requirement">For macOS 14 Sonoma or later</p>
 
-        <ul class="dots">
-          <li><button class="dot" style="--tint: var(--camera); --i: 0" data-title="Blob camera" data-key="⌃⇧1"
-              data-text="A floating camera bubble for calls and recordings. Resize it, reshape it, drag it anywhere."
-              aria-pressed="false" aria-controls="preview" aria-label="Blob camera">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
-          </button></li>
-          <li><button class="dot" style="--tint: var(--tasks); --i: 1" data-title="Tasks" data-key="⌃⇧2"
-              data-text="A quick list over everything, with subtasks. Jot a task, check it off, get back to work."
-              aria-pressed="false" aria-controls="preview" aria-label="Tasks">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7l2 2 3-3M4 15l2 2 3-3M13 8h7M13 16h7"/></svg>
-          </button></li>
-          <li><button class="dot" style="--tint: var(--pen); --i: 2" data-title="Draw on screen" data-key="⌃⇧3"
-              data-text="Draw on any screen, spotlight what matters, or sketch on a whiteboard."
-              aria-pressed="false" aria-controls="preview" aria-label="Draw on screen">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19l1-4L16 5l3 3L9 18z"/><path d="M14 7l3 3"/></svg>
-          </button></li>
-          <li><button class="dot" style="--tint: var(--timer); --i: 3" data-title="Timer" data-key="⌃⇧4"
-              data-text="A little die that tumbles to the bottom of your screen and counts down. Toss it, click to start, or type any time from 10 seconds up."
-              aria-pressed="false" aria-controls="preview" aria-label="Timer">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="0.6" fill="currentColor"/><circle cx="15" cy="15" r="0.6" fill="currentColor"/><circle cx="12" cy="12" r="0.6" fill="currentColor"/></svg>
-          </button></li>
-          <li><button class="dot" style="--tint: var(--clipboard); --i: 4" data-title="Clipboard" data-key="⌃⇧5"
-              data-text="Your recent copies, text or images, one click away from being copied again."
-              aria-pressed="false" aria-controls="preview" aria-label="Clipboard">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9z"/></svg>
-          </button></li>
-        </ul>
-
-        <h1 class="message" id="message">Hello, we’re dots: small and fun everyday tools for your Mac</h1>
-        <p class="hint">Click a dot to see what it does</p>
-        <a class="download" aria-disabled="true">Coming soon to the Mac App Store</a>
-        <p class="requirement">For macOS 14 Sonoma or later</p>
-      </div>
-    </section>
-
-    <section class="snippets" aria-labelledby="snippets-title">
-      <h2 id="snippets-title">See them in action</h2>
-      <ul>
-        <li style="--tint: var(--camera)">
-          <video src="clips/camera.mp4" poster="clips/camera.jpg" muted loop playsinline preload="none" aria-label="Blob camera in Dots"></video>
-          <h3>Blob camera</h3><kbd>⌃⇧1</kbd>
-          <p>A floating bubble of your camera for calls and recordings. Circle, portrait or a wobbling blob, in three sizes. Dots Pro adds electric, fire, rainbow and cloud effects.</p>
+      <!-- As on the app's welcome: white dots floating, each one's card right above it. -->
+      <ul class="dots">
+        <li style="--tint: var(--camera); --i: 0">
+          <button class="dot" aria-label="Blob camera" aria-describedby="tip-camera" aria-pressed="false"><img class="glyph" src="icons/camera.png" alt="" width="48" height="48"></button>
+          <div class="tip" id="tip-camera" role="tooltip"><h2>Blob camera <kbd>⌃⇧1</kbd></h2><p>A floating camera bubble for calls and recordings. Resize it, reshape it, drag it anywhere.</p></div>
         </li>
-        <li style="--tint: var(--tasks)">
-          <video src="clips/tasks.mp4" poster="clips/tasks.jpg" muted loop playsinline preload="none" aria-label="Tasks in Dots"></video>
-          <h3>Tasks</h3><kbd>⌃⇧2</kbd>
-          <p>A list over everything. Type a task and press Return, check it off, drag to reorder. It’s still there next time.</p>
+        <li style="--tint: var(--tasks); --i: 1">
+          <button class="dot" aria-label="Tasks" aria-describedby="tip-tasks" aria-pressed="false"><img class="glyph" src="icons/tasks.png" alt="" width="48" height="48"></button>
+          <div class="tip" id="tip-tasks" role="tooltip"><h2>Tasks <kbd>⌃⇧2</kbd></h2><p>A quick list over everything, with subtasks. Jot a task, check it off, get back to work.</p></div>
         </li>
-        <li style="--tint: var(--tasks)">
-          <video src="clips/subtasks.mp4" poster="clips/subtasks.jpg" muted loop playsinline preload="none" aria-label="Subtasks in Dots"></video>
-          <h3>Subtasks <span class="new">New in 1.1</span></h3><kbd>Tab</kbd>
-          <p>Drag a task a little to the right under another and it becomes a subtask. Drag it back out to the left. Fold a task’s subtasks into a stack with ←, unfold with →.</p>
+        <li style="--tint: var(--pen); --i: 2">
+          <button class="dot" aria-label="Draw on screen" aria-describedby="tip-pen" aria-pressed="false"><img class="glyph" src="icons/pen.png" alt="" width="48" height="48"></button>
+          <div class="tip" id="tip-pen" role="tooltip"><h2>Draw on screen <kbd>⌃⇧3</kbd></h2><p>Draw on any screen, spotlight what matters, or sketch on a whiteboard.</p></div>
         </li>
-        <li style="--tint: var(--pen)">
-          <video src="clips/pen.mp4" poster="clips/pen.jpg" muted loop playsinline preload="none" aria-label="Draw on screen in Dots"></video>
-          <h3>Draw on screen</h3><kbd>⌃⇧3</kbd>
-          <p>Draw over any app with a red pen, or with Dots Pro’s electric, fire and rainbow brushes. Ink stays until you clear it.</p>
+        <li style="--tint: var(--timer); --i: 3">
+          <button class="dot" aria-label="Timer" aria-describedby="tip-timer" aria-pressed="false"><img class="glyph" src="icons/timer.png" alt="" width="48" height="48"></button>
+          <div class="tip" id="tip-timer" role="tooltip"><h2>Timer <kbd>⌃⇧4</kbd></h2><p>A little die that tumbles to the bottom of your screen and counts down.</p></div>
         </li>
-        <li style="--tint: var(--pen)">
-          <video src="clips/spotlight.mp4" poster="clips/spotlight.jpg" muted loop playsinline preload="none" aria-label="Spotlight in Dots"></video>
-          <h3>Spotlight</h3><kbd>5</kbd>
-          <p>Lasso what matters and everything else dims. Overlapping spotlights merge.</p>
-        </li>
-        <li style="--tint: var(--pen)">
-          <video src="clips/whiteboard.mp4" poster="clips/whiteboard.jpg" muted loop playsinline preload="none" aria-label="Whiteboard in Dots"></video>
-          <h3>Whiteboard</h3><kbd>W</kbd>
-          <p>Flip the pen to a whiteboard with shapes, arrows and text that snap to a dot grid. It’s saved for next time. Part of Dots Pro.</p>
-        </li>
-        <li style="--tint: var(--timer)">
-          <video src="clips/timer.mp4" poster="clips/timer.jpg" muted loop playsinline preload="none" aria-label="Timer in Dots"></video>
-          <h3>Timer</h3><kbd>⌃⇧4</kbd>
-          <p>A 3D die that drops in, bounces off the edges of your screen and counts down. Click to start, toss it around, and it chimes and hops when time’s up.</p>
-        </li>
-        <li style="--tint: var(--clipboard)">
-          <video src="clips/clipboard.mp4" poster="clips/clipboard.jpg" muted loop playsinline preload="none" aria-label="Clipboard in Dots"></video>
-          <h3>Clipboard</h3><kbd>⌃⇧5</kbd>
-          <p>Your recent copies, text or images, to copy again with a click or a number key. The last three, or the last ten with Dots Pro.</p>
+        <li style="--tint: var(--clipboard); --i: 4">
+          <button class="dot" aria-label="Clipboard" aria-describedby="tip-clipboard" aria-pressed="false"><img class="glyph" src="icons/clipboard.png" alt="" width="48" height="48"></button>
+          <div class="tip" id="tip-clipboard" role="tooltip"><h2>Clipboard <kbd>⌃⇧5</kbd></h2><p>Your recent copies, text or images, one click away from being copied again.</p></div>
         </li>
       </ul>
+
+      <a class="down" href="#features-title" aria-label="See them in action">
+        <!-- Drawn like the pen's electric brush (electric.js). -->
+        <canvas class="electric" width="48" height="104" aria-hidden="true"></canvas>
+      </a>
     </section>
 
-    <p class="promise">Pick only the dots you want. They wait at the top of your screen, or hide them and use just the shortcuts. Everything they hold stays on your Mac: no account, no tracking, nothing collected.</p>
+    <section class="features" aria-labelledby="features-title">
+      <h2 id="features-title">See them in action</h2>
+      <article style="--tint: var(--camera)">
+        <div class="stage-card">
+          <video src="clips/camera.mp4" poster="clips/camera.jpg" muted loop playsinline preload="none" aria-label="Blob camera in Dots"></video>
+          <button class="pause" type="button" aria-label="Pause Blob camera" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2" width="2.4" height="8" rx="0.8"/><rect x="7.1" y="2" width="2.4" height="8" rx="0.8"/></svg></button>
+        </div>
+        <h3>Blob camera</h3>
+        <p>Your camera in a floating bubble, or a wobbling blob.</p>
+      </article>
+      <article style="--tint: var(--tasks)">
+        <div class="stage-card">
+          <video src="clips/tasks.mp4" poster="clips/tasks.jpg" muted loop playsinline preload="none" aria-label="Tasks in Dots"></video>
+          <button class="pause" type="button" aria-label="Pause Tasks" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2" width="2.4" height="8" rx="0.8"/><rect x="7.1" y="2" width="2.4" height="8" rx="0.8"/></svg></button>
+        </div>
+        <h3>Tasks</h3>
+        <p>A list over everything. Type it, check it off, get back to work.</p>
+      </article>
+      <article style="--tint: var(--tasks)">
+        <div class="stage-card">
+          <video src="clips/subtasks.mp4" poster="clips/subtasks.jpg" muted loop playsinline preload="none" aria-label="Subtasks in Dots"></video>
+          <button class="pause" type="button" aria-label="Pause Subtasks" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2" width="2.4" height="8" rx="0.8"/><rect x="7.1" y="2" width="2.4" height="8" rx="0.8"/></svg></button>
+        </div>
+        <h3>Subtasks</h3>
+        <p>Drag a task a little to the right to tuck it under another.</p>
+      </article>
+      <article style="--tint: var(--pen)">
+        <div class="stage-card">
+          <video src="clips/pen.mp4" poster="clips/pen.jpg" muted loop playsinline preload="none" aria-label="Draw on screen in Dots"></video>
+          <button class="pause" type="button" aria-label="Pause Draw on screen" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2" width="2.4" height="8" rx="0.8"/><rect x="7.1" y="2" width="2.4" height="8" rx="0.8"/></svg></button>
+        </div>
+        <h3>Draw on screen</h3>
+        <p>Draw over any app, then clear it in one click.</p>
+      </article>
+      <article style="--tint: var(--pen)">
+        <div class="stage-card">
+          <video src="clips/spotlight.mp4" poster="clips/spotlight.jpg" muted loop playsinline preload="none" aria-label="Spotlight in Dots"></video>
+          <button class="pause" type="button" aria-label="Pause Spotlight" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2" width="2.4" height="8" rx="0.8"/><rect x="7.1" y="2" width="2.4" height="8" rx="0.8"/></svg></button>
+        </div>
+        <h3>Spotlight</h3>
+        <p>Lasso what matters and everything else dims.</p>
+      </article>
+      <article style="--tint: var(--pen)">
+        <div class="stage-card">
+          <video src="clips/whiteboard.mp4" poster="clips/whiteboard.jpg" muted loop playsinline preload="none" aria-label="Whiteboard in Dots"></video>
+          <button class="pause" type="button" aria-label="Pause Whiteboard" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2" width="2.4" height="8" rx="0.8"/><rect x="7.1" y="2" width="2.4" height="8" rx="0.8"/></svg></button>
+        </div>
+        <h3>Whiteboard</h3>
+        <p>Shapes, arrows and text on a dot grid, saved for next time.</p>
+      </article>
+      <article style="--tint: var(--timer)">
+        <div class="stage-card">
+          <video src="clips/timer.mp4" poster="clips/timer.jpg" muted loop playsinline preload="none" aria-label="Timer in Dots"></video>
+          <button class="pause" type="button" aria-label="Pause Timer" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2" width="2.4" height="8" rx="0.8"/><rect x="7.1" y="2" width="2.4" height="8" rx="0.8"/></svg></button>
+        </div>
+        <h3>Timer</h3>
+        <p>A 3D die that tumbles down your screen and counts down.</p>
+      </article>
+      <article style="--tint: var(--clipboard)">
+        <div class="stage-card">
+          <video src="clips/clipboard.mp4" poster="clips/clipboard.jpg" muted loop playsinline preload="none" aria-label="Clipboard in Dots"></video>
+          <button class="pause" type="button" aria-label="Pause Clipboard" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2" width="2.4" height="8" rx="0.8"/><rect x="7.1" y="2" width="2.4" height="8" rx="0.8"/></svg></button>
+        </div>
+        <h3>Clipboard</h3>
+        <p>Your recent copies, one click away from being copied again.</p>
+      </article>
+    </section>
+
   </main>
 
   <footer>
@@ -123,35 +139,47 @@
   </footer>
 
   <script>
-    // Clips play only while on screen, and not at all for reduced motion (the poster stays).
+    // Clips play while on screen (not for reduced motion); each card's button pauses its own.
     const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const clips = document.querySelectorAll(".snippets video");
-    if (calm) {
-      clips.forEach((clip) => { clip.controls = true; });
-    } else {
-      const watcher = new IntersectionObserver((entries) => {
-        entries.forEach(({ target, isIntersecting }) => {
-          if (isIntersecting) { target.play().catch(() => {}); } else { target.pause(); }
-        });
-      }, { threshold: 0.35 });
-      clips.forEach((clip) => watcher.observe(clip));
-    }
+    const cards = [...document.querySelectorAll(".features article")];
+    const sync = (card) => {
+      const clip = card.querySelector("video");
+      const paused = card.dataset.paused === "true" || calm;
+      if (card.dataset.visible === "true" && !paused) { clip.play().catch(() => {}); } else { clip.pause(); }
+    };
+    cards.forEach((card) => {
+      const button = card.querySelector(".pause");
+      if (calm) card.dataset.paused = "true";
+      button.setAttribute("aria-pressed", String(card.dataset.paused === "true"));
+      button.addEventListener("click", () => {
+        card.dataset.paused = String(card.dataset.paused !== "true");
+        button.setAttribute("aria-pressed", card.dataset.paused);
+        sync(card);
+      });
+    });
+    const watcher = new IntersectionObserver((entries) => {
+      entries.forEach(({ target, isIntersecting }) => {
+        const card = target.closest("article");
+        card.dataset.visible = String(isIntersecting);
+        sync(card);
+      });
+    }, { threshold: 0.4 });
+    cards.forEach((card) => watcher.observe(card.querySelector("video")));
 
-    // A dot opens its card; clicking it again, or another dot, swaps or closes it.
-    const preview = document.getElementById("preview");
+    // Hovering or focusing a dot shows its card above it; a click (or tap) keeps it up.
     const dots = document.querySelectorAll(".dot");
     dots.forEach((dot) => {
       dot.addEventListener("click", () => {
         const isOpen = dot.getAttribute("aria-pressed") === "true";
         dots.forEach((other) => other.setAttribute("aria-pressed", "false"));
-        if (isOpen) { preview.hidden = true; return; }
-        dot.setAttribute("aria-pressed", "true");
-        document.getElementById("preview-title").textContent = dot.dataset.title;
-        document.getElementById("preview-key").textContent = dot.dataset.key;
-        document.getElementById("preview-text").textContent = dot.dataset.text;
-        preview.hidden = false;
+        dot.setAttribute("aria-pressed", String(!isOpen));
       });
     });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") dots.forEach((dot) => dot.setAttribute("aria-pressed", "false"));
+    });
   </script>
+  <script src="clouds.js" defer></script>
+  <script src="electric.js" defer></script>
 </body>
 </html>
