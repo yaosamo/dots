@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <a class="cta" href="https://apps.apple.com/us/app/dots-clouds/id6817058883?mt=12"><span class="cta-long">Download on the </span>Mac App Store</a>
   <main>
     <section class="hero" aria-labelledby="message">
       <!-- The welcome's clouds, drawn live by clouds.js (the app's cloud shader). -->
@@ -25,11 +26,10 @@
       <div class="clouds" aria-hidden="true"><img src="clouds.png" alt="" width="2400" height="840"></div>
       <header class="topbar">
         <a class="brand" href="/"><img src="icon.png" alt="" width="28" height="28">Dots &amp; Clouds</a>
-        <a class="cta" href="https://apps.apple.com/us/app/dots-clouds/id6817058883?mt=12">Download on the Mac App Store</a>
       </header>
 
 
-      <h1 id="message">Hello, we’re dots – small and fun everyday tools for your computer</h1>
+      <h1 id="message">Hello, we’re dots&nbsp;– small and fun everyday tools for your computer</h1>
       <p class="requirement">For macOS 14 Sonoma or later</p>
 
       <!-- As on the app's welcome: white dots floating, each one's card right above it. -->
@@ -154,7 +154,7 @@
       if (!APP_STORE_URL) return;
       button.href = APP_STORE_URL;
       button.removeAttribute("aria-disabled");
-      button.textContent = "Download on the Mac App Store";
+      button.innerHTML = '<span class="cta-long">Download on the </span>Mac App Store';
     });
     // Clips play while on screen (not for reduced motion); each card's button pauses its own.
     const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;

@@ -167,12 +167,13 @@ kbd {
 .dots li:has(.dot:hover) .tip, .dots li:has(.dot:focus-visible) .tip, .dots li:has(.dot[aria-pressed="true"]) .tip { opacity: 1; visibility: visible; translate: -50% 0; }
 
 
-/* The store button stays in the top right corner, over the page, as you scroll. */
-.topbar .cta {
+/* The store button stays in the top right corner, over the page, as you scroll. It sits right in
+   <body>: inside the header, iOS Safari didn't keep it pinned. */
+.cta {
   position: fixed;
   top: 18px;
   right: max(16px, calc((100vw - 1200px) / 2));
-  z-index: 10;
+  z-index: 30;
   box-shadow: 0 10px 28px -10px rgb(10 15 30 / 0.45);
 }
 a.cta[href]:hover { transform: scale(1.03); }
@@ -255,6 +256,7 @@ footer .spacer { flex: 1; }
 }
 @media (max-width: 520px) {
   .cta { padding: 8px 14px; }
+  .cta-long { display: none; }
   .dots li:first-child .tip { left: 0; translate: 0 6px; }
   .dots li:last-child .tip { left: auto; right: 0; translate: 0 6px; }
   .dots li:is(:first-child, :last-child):has(.dot:hover, .dot[aria-pressed="true"]) .tip { translate: 0 0; }
