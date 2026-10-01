@@ -1,5 +1,6 @@
 // The arrow under the dots, drawn like the pen's electric brush (Dots/Shaders/PenShaders.metal):
 // the line jumps to a new jitter in ticks, with a flickering blue corona around a pale core.
+// It shoots down from the top, its head snaps open, it crackles a moment, fades, and goes again.
 // ShaderTuning: rate 10.42 ticks a second, glow radius 9.7; the brush's line is 3 points.
 (() => {
   const canvas = document.querySelector(".electric");
@@ -29,12 +30,12 @@
     return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
   };
 
-  // The arrow: a line down, then a chevron, as the stroke a pen would draw.
+  // The arrow: the shaft from the top, then the head's two arms out from the tip.
   const cx = css.width / 2;
-  const strokes = [
-    [[cx, 12], [cx, css.height - 16]],
-    [[cx - 15, css.height - 32], [cx, css.height - 14], [cx + 15, css.height - 32]],
-  ];
+  const tip = [cx, css.height - 14];
+  const shaft = [[cx, 12], [cx, css.height - 16]];
+  const arms = [[tip, [cx - 15, css.height - 32]], [tip, [cx + 15, css.height - 32]]];
+  const strokes = [shaft, ...arms];
   // Points every 3 px along each stroke, so the jitter can bend it.
   const dense = strokes.map((points) => {
     const out = [];
@@ -47,13 +48,37 @@
     return out;
   });
 
-  const draw = (time) => {
+  // One loop, in seconds: a near-instant strike down, the head snapping open, a flash, crackle, fade, rest.
+  const SHOOT = 0.12, SNAP = 0.06, HOLD = 1.1, FADE = 0.25, REST = 0.55;
+  const FLASH = 0.22;
+  const LOOP = SHOOT + SNAP + HOLD + FADE + REST;
+  const clamp01 = (x) => Math.min(Math.max(x, 0), 1);
+  // How much of each stroke shows, and the arrow's opacity, at `t` into the loop.
+  const phase = (t) => {
+    const shoot = clamp01(t / SHOOT);
+    const snap = clamp01((t - SHOOT) / SNAP);
+    const fade = clamp01((t - SHOOT - SNAP - HOLD) / FADE);
+    // The flash when the strike lands: full right away, gone over FLASH.
+    const landed = t - SHOOT - SNAP;
+    const flash = landed >= 0 ? Math.pow(1 - clamp01(landed / FLASH), 2) : 0;
+    return {
+      shaft: 1 - Math.pow(1 - shoot, 2), // quick from the start, like a bolt
+      arms: snap,
+      opacity: 1 - fade * fade,
+      flash,
+    };
+  };
+  const partial = (points, amount) => points.slice(0, Math.max(0, Math.round(points.length * amount)));
+
+  const draw = (time, still = false) => {
     const tick = Math.floor(time * RATE);
-    const flicker = 0.7 + 0.3 * hash(tick, 1);
+    const shown = still ? { shaft: 1, arms: 1, opacity: 1, flash: 0 } : phase(time % LOOP);
+    const flicker = Math.min(1, (0.7 + 0.3 * hash(tick, 1)) * shown.opacity + shown.flash);
     ctx.clearRect(0, 0, css.width, css.height);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    const paths = dense.map((points) => {
+    const visible = dense.map((points, i) => partial(points, i === 0 ? shown.shaft : shown.arms));
+    const paths = visible.filter((points) => points.length > 1).map((points) => {
       const path = new Path2D();
       points.forEach(([x, y], i) => {
         const jx = (noise(x * 0.25 + tick * 3.1, y * 0.25) - 0.5) * 2 * JITTER;
@@ -64,18 +89,18 @@
     });
     // Corona, then the core: blue (0.25, 0.6, 1) around pale (0.85, 0.95, 1).
     ctx.shadowColor = `rgba(64, 153, 255, ${0.9 * flicker})`;
-    ctx.shadowBlur = GLOW * 1.6;
+    ctx.shadowBlur = GLOW * (1.6 + shown.flash * 1.4);
     ctx.strokeStyle = `rgba(64, 153, 255, ${0.85 * flicker})`;
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 4 + shown.flash * 2;
     paths.forEach((path) => ctx.stroke(path));
     ctx.shadowBlur = GLOW * 0.44;
-    ctx.strokeStyle = "rgb(217, 242, 255)";
+    ctx.strokeStyle = `rgba(217, 242, 255, ${shown.opacity})`;
     ctx.lineWidth = 2;
     paths.forEach((path) => ctx.stroke(path));
   };
 
   const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (calm) { draw(0); return; }
+  if (calm) { draw(0, true); return; }
   let visible = true;
   let frame = 0;
   const loop = (now) => {
