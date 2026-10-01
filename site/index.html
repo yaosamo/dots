@@ -13,6 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500&display=swap" rel="stylesheet">
+  <meta name="twitter:dnt" content="on">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -59,6 +60,14 @@
         <!-- Drawn like the pen's electric brush (electric.js). -->
         <canvas class="electric" width="48" height="104" aria-hidden="true"></canvas>
       </a>
+    </section>
+
+    <!-- The post that started it, as X embeds it (widgets.js); do-not-track on. -->
+    <section class="post" aria-label="Dots on X">
+      <blockquote class="twitter-tweet" data-dnt="true" data-align="center" data-conversation="none">
+        <p>The blob camera, on X</p>
+        <a href="https://twitter.com/yaosamo/status/2104099908915753331">See the post by @yaosamo</a>
+      </blockquote>
     </section>
 
     <section class="features" aria-labelledby="features-title">
@@ -181,5 +190,6 @@
   </script>
   <script src="clouds.js" defer></script>
   <script src="electric.js" defer></script>
+  <script src="https://platform.twitter.com/widgets.js" async charset="utf-8"></script>
 </body>
 </html>
