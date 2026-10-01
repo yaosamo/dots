@@ -25,7 +25,7 @@
       <div class="clouds" aria-hidden="true"><img src="clouds.png" alt="" width="2400" height="840"></div>
       <header class="topbar">
         <a class="brand" href="/"><img src="icon.png" alt="" width="28" height="28">Dots &amp; Clouds</a>
-        <a class="cta" aria-disabled="true">Coming soon to the Mac App Store</a>
+        <a class="cta" href="https://apps.apple.com/us/app/dots-clouds/id6817058883?mt=12">Download on the Mac App Store</a>
       </header>
 
 
@@ -149,7 +149,7 @@
 
   <script>
     // The App Store page: set it once Dots is live, and the button turns into a download link.
-    const APP_STORE_URL = "";
+    const APP_STORE_URL = "https://apps.apple.com/us/app/dots-clouds/id6817058883?mt=12";
     document.querySelectorAll(".cta").forEach((button) => {
       if (!APP_STORE_URL) return;
       button.href = APP_STORE_URL;
