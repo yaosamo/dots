@@ -15,6 +15,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500&display=swap" rel="stylesheet">
   <meta name="twitter:dnt" content="on">
   <link rel="stylesheet" href="styles.css">
+  <!-- ?theme=dark or ?theme=light shows that theme whatever the system's appearance. -->
+  <script>
+    const theme = new URLSearchParams(location.search).get("theme");
+    if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
+  </script>
   <script>window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };</script>
   <script defer src="/_vercel/insights/script.js"></script>
 </head>
@@ -22,6 +27,8 @@
   <a class="cta" href="https://apps.apple.com/us/app/dots-clouds/id6817058883?mt=12"><span class="cta-long">Download on the </span>Mac App Store</a>
   <main>
     <section class="hero" aria-labelledby="message">
+      <!-- At night (dark mode), stars behind the clouds (stars.js). -->
+      <canvas class="stars" aria-hidden="true"></canvas>
       <!-- The welcome's clouds, drawn live by clouds.js (the app's cloud shader). -->
       <canvas class="clouds-canvas" aria-hidden="true"></canvas>
       <!-- Without WebGL: the clouds rendered once, as a picture. -->
@@ -159,6 +166,12 @@
       button.removeAttribute("aria-disabled");
       button.innerHTML = '<span class="cta-long">Download on the </span>Mac App Store';
     });
+    // The post on X in X's dark theme when the page is dark (read when widgets.js turns it into the post).
+    const prefersDark = matchMedia("(prefers-color-scheme: dark)").matches;
+    const pageTheme = document.documentElement.dataset.theme;
+    if (pageTheme ? pageTheme === "dark" : prefersDark) {
+      document.querySelector(".post .twitter-tweet")?.setAttribute("data-theme", "dark");
+    }
     // Clips play while on screen (not for reduced motion); each card's button pauses its own.
     const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const cards = [...document.querySelectorAll(".features article")];
@@ -199,6 +212,7 @@
       if (event.key === "Escape") dots.forEach((dot) => dot.setAttribute("aria-pressed", "false"));
     });
   </script>
+  <script src="stars.js" defer></script>
   <script src="clouds.js" defer></script>
   <script src="electric.js" defer></script>
   <script src="https://platform.twitter.com/widgets.js" async charset="utf-8"></script>

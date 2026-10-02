@@ -61,7 +61,8 @@ a:hover { text-decoration-thickness: 2px; }
   /* Blue enough for white clouds to read; white under the words, then into the page's colour. */
   background: linear-gradient(#9fc2f0 0%, #c9dcf6 34%, #fff 72%, #fff 86%, var(--page-below) 100%);
 }
-.hero > :not(.clouds, .clouds-canvas) { position: relative; z-index: 1; }
+.hero > :not(.clouds, .clouds-canvas, .stars) { position: relative; z-index: 1; }
+.stars { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: none; -webkit-mask: linear-gradient(#000 55%, transparent 85%); mask: linear-gradient(#000 55%, transparent 85%); }
 .clouds-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; -webkit-mask: linear-gradient(#000 72%, transparent 88%); mask: linear-gradient(#000 72%, transparent 88%); }
 .hero.has-clouds .clouds { display: none; }
 .clouds {
@@ -263,10 +264,51 @@ footer .spacer { flex: 1; }
 }
 footer a[aria-current="page"] { color: var(--ink); text-decoration: none; }
 
+/* Dark mode: the welcome at night. A deep blue sky with stars (stars.js), moonlit clouds
+   (clouds.js), light words and dark glass dots. The same rules twice: once for the system's dark
+   appearance, once for data-theme="dark". */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .clouds { opacity: 0.5; }
+  :root:not([data-theme="light"]) .hero {
+    color-scheme: dark;
+    --ink: #f2f3f7;
+    --ink-soft: #a3a9b8;
+    --page: #0a0f1a;
+    background:
+      radial-gradient(80% 50% at 50% 0%, #141d3d 0%, transparent 70%),
+      linear-gradient(#050913 0%, #0a1124 40%, #0b1122 72%, var(--page-below) 100%);
+  }
+  :root:not([data-theme="light"]) .stars { display: block; }
+  :root:not([data-theme="light"]) .clouds { filter: brightness(0.3) saturate(0.8); opacity: 0.8; }
+  :root:not([data-theme="light"]) .dot {
+    background: radial-gradient(120% 120% at 30% 20%, #2a3350, #151b2b 70%);
+    box-shadow: 0 8px 30px rgb(0 0 0 / 0.55), inset 0 0 0 1px rgb(255 255 255 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.1);
+  }
+  :root:not([data-theme="light"]) .dot:hover, :root:not([data-theme="light"]) .dot:focus-visible {
+    box-shadow: 0 12px 36px rgb(0 0 0 / 0.6), inset 0 0 0 1px rgb(255 255 255 / 0.12), inset 0 1px 0 rgb(255 255 255 / 0.14);
+  }
+  :root:not([data-theme="light"]) .dot[aria-pressed="true"] { background: var(--tint); box-shadow: 0 10px 34px -6px color-mix(in srgb, var(--tint) 75%, transparent); }
+  :root:not([data-theme="light"]) .tip { background: #151b2b; box-shadow: 0 18px 40px -16px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.08); }
 }
-:root[data-theme="dark"] .clouds { opacity: 0.5; }
+:root[data-theme="dark"] .hero {
+  color-scheme: dark;
+  --ink: #f2f3f7;
+  --ink-soft: #a3a9b8;
+  --page: #0a0f1a;
+  background:
+    radial-gradient(80% 50% at 50% 0%, #141d3d 0%, transparent 70%),
+    linear-gradient(#050913 0%, #0a1124 40%, #0b1122 72%, var(--page-below) 100%);
+}
+:root[data-theme="dark"] .stars { display: block; }
+:root[data-theme="dark"] .clouds { filter: brightness(0.3) saturate(0.8); opacity: 0.8; }
+:root[data-theme="dark"] .dot {
+  background: radial-gradient(120% 120% at 30% 20%, #2a3350, #151b2b 70%);
+  box-shadow: 0 8px 30px rgb(0 0 0 / 0.55), inset 0 0 0 1px rgb(255 255 255 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.1);
+}
+:root[data-theme="dark"] .dot:hover, :root[data-theme="dark"] .dot:focus-visible {
+  box-shadow: 0 12px 36px rgb(0 0 0 / 0.6), inset 0 0 0 1px rgb(255 255 255 / 0.12), inset 0 1px 0 rgb(255 255 255 / 0.14);
+}
+:root[data-theme="dark"] .dot[aria-pressed="true"] { background: var(--tint); box-shadow: 0 10px 34px -6px color-mix(in srgb, var(--tint) 75%, transparent); }
+:root[data-theme="dark"] .tip { background: #151b2b; box-shadow: 0 18px 40px -16px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.08); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

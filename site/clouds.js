@@ -18,6 +18,8 @@
     precision highp float;
     uniform vec2 size;
     uniform float time, descend, leave, fade, seed;
+    // 1 in dark mode: moonlit night clouds over the stars (stars.js), 0 by day.
+    uniform float night;
 
     const float SCALE = 2.762;
     const float HOLES = 0.3;
@@ -100,6 +102,12 @@
       vec3 shadow = mix(vec3(0.80, 0.83, 0.89), vec3(0.86, 0.88, 0.92), depth);
       vec3 colour = mix(shadow, vec3(1.0), lit);
       colour = mix(vec3(0.90, 0.92, 0.96), colour, mix(0.6, 1.0, depth));
+      // At night: deep blue undersides, tops caught by the moon; far layers fainter, so stars show through.
+      vec3 moonlit = mix(vec3(0.03, 0.04, 0.09), vec3(0.17, 0.21, 0.32), lit * lit * lit);
+      colour = mix(colour, mix(vec3(0.03, 0.05, 0.10), moonlit, mix(0.6, 1.0, depth)), night);
+      // Thinner at night, the fog most of all, so the sky between them is clear and starry.
+      float thin = mix(0.45, 0.85, depth) * mix(0.6, 1.0, smoothstep(0.2, 0.7, density));
+      alpha *= mix(1.0, thin, night);
       return vec4(colour * alpha, alpha);
     }
 
@@ -116,8 +124,10 @@
       }
 
       vec2 d = vec2(uv.x - aspect * 0.5, uv.y - 0.5);
-      float v = VEIL * exp(-dot(d, d) * 5.0) * descend * (1.0 - leave);
-      result = vec4(v) + result * (1.0 - v);
+      float v = VEIL * mix(1.0, 0.5, night) * exp(-dot(d, d) * 5.0) * descend * (1.0 - leave);
+      // White haze behind the words by day; a dark blue one at night, so they stay readable over the stars.
+      vec3 veil = mix(vec3(1.0), vec3(0.04, 0.06, 0.12), night);
+      result = vec4(veil * v, v) + result * (1.0 - v);
       gl_FragColor = result * fade;
     }
   `;
@@ -146,7 +156,7 @@
   gl.vertexAttribPointer(corner, 2, gl.FLOAT, false, 0, 0);
 
   const at = (name) => gl.getUniformLocation(program, name);
-  const u = { size: at("size"), time: at("time"), descend: at("descend"), leave: at("leave"), fade: at("fade"), seed: at("seed") };
+  const u = { size: at("size"), time: at("time"), descend: at("descend"), leave: at("leave"), fade: at("fade"), seed: at("seed"), night: at("night") };
   gl.uniform1f(u.seed, Math.random() * 50); // different clouds each time, as in the app
   gl.uniform1f(u.leave, 0);
 
@@ -165,6 +175,12 @@
   };
 
   const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Follows the page's theme (data-theme, or the system's appearance), switching live.
+  const darkScheme = matchMedia("(prefers-color-scheme: dark)");
+  const isNight = () => {
+    const theme = document.documentElement.dataset.theme;
+    return theme ? theme === "dark" : darkScheme.matches;
+  };
   const start = performance.now();
   const easeOut = (x) => 1 - Math.pow(1 - Math.min(Math.max(x, 0), 1), 3);
   const draw = (now) => {
@@ -172,6 +188,7 @@
     const time = calm ? 12 : (now - start) / 1000;
     resize();
     gl.uniform1f(u.time, time);
+    gl.uniform1f(u.night, isNight() ? 1 : 0);
     gl.uniform1f(u.descend, calm ? 1 : easeOut(time / 1.636));
     gl.uniform1f(u.fade, calm ? 1 : Math.min(time / 0.4, 1));
     gl.clearColor(0, 0, 0, 0);
@@ -192,5 +209,6 @@
     if (visible && !frame) frame = requestAnimationFrame(loop);
   }).observe(hero);
   addEventListener("resize", () => { if (calm) draw(performance.now()); });
+  darkScheme.addEventListener("change", () => { if (calm) draw(performance.now()); });
   frame = requestAnimationFrame(loop);
 })();
