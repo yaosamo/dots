@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Changelog · Dots &amp; Clouds</title>
+  <meta name="description" content="What’s new in each version of Dots & Clouds.">
+  <link rel="icon" href="favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script>window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };</script>
+  <script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body>
+  <main class="page page-wide">
+    <a class="brand" href="/"><img src="icon.png" alt="" width="32" height="32">Dots &amp; Clouds</a>
+    <h1>Changelog</h1>
+    <p class="updated">New updates and improvements to Dots &amp; Clouds.</p>
+
+    <!-- Newest first, like Linear's: the date on the left, the release's headline and clip on the right. -->
+    <article class="release">
+      <div class="when"><time datetime="2026-10">October 2026</time><span>1.1</span></div>
+      <div class="what">
+        <h2>Subtasks</h2>
+        <video src="clips/subtasks.mp4" poster="clips/subtasks.jpg" autoplay muted loop playsinline aria-label="Subtasks in Dots"></video>
+        <p>Drag a task a little to the right to tuck it under another. Tab and ⇧Tab work too.</p>
+        <h3>Improvements</h3>
+        <ul>
+          <li>Hide Dots in the menu bar menu keeps the bar off the screen. Shortcuts still work.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="release">
+      <div class="when"><time datetime="2026-09">September 2026</time><span>1.0</span></div>
+      <div class="what">
+        <h2>Hello, dots</h2>
+        <video src="clips/camera.mp4" poster="clips/camera.jpg" autoplay muted loop playsinline aria-label="Blob camera in Dots"></video>
+        <p>Five small tools at the top of your screen: a blob camera, tasks, a pen, a dice timer and clipboard history.</p>
+      </div>
+    </article>
+
+    <footer>
+      <span>© 2026 Yaroslav Samoylov</span>
+      <span class="spacer"></span>
+      <a href="/changelog" aria-current="page">Changelog</a>
+      <a href="/support">Support</a>
+      <a href="/privacy">Privacy</a>
+    </footer>
+  </main>
+  <script>
+    // Clips loop on their own, except for reduced motion: then they show their first frame.
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      document.querySelectorAll(".release video").forEach((clip) => { clip.removeAttribute("autoplay"); clip.pause(); });
+    }
+  </script>
+</body>
+</html>

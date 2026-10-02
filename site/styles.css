@@ -246,6 +246,23 @@ footer .spacer { flex: 1; }
 .page .updated { color: var(--ink-soft); margin: 0 0 32px; }
 .page footer { width: 100%; }
 
+/* Changelog, like Linear's: the date in a column on the left, each release a headline and a clip. */
+.page-wide { width: min(100% - 32px, 880px); }
+.release { display: grid; grid-template-columns: 160px 1fr; gap: 32px; padding: 56px 0; border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
+.release:first-of-type { border-top: 0; padding-top: 24px; }
+.release .when { display: flex; flex-direction: column; gap: 2px; padding-top: 6px; color: var(--ink-soft); font-size: var(--step--1); }
+.release .when time { color: var(--ink); }
+.release h2 { margin: 0 0 20px; font-size: var(--step-2); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; }
+.release video { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 12px; background: color-mix(in srgb, var(--ink) 6%, var(--page)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent); }
+.release p { margin: 20px 0 0; color: var(--ink-soft); }
+.release h3 { margin: 32px 0 8px; font-size: var(--step-0); font-weight: 500; }
+.release ul { margin: 0; padding-left: 1.2em; color: var(--ink-soft); }
+@media (max-width: 680px) {
+  .release { grid-template-columns: 1fr; gap: 12px; padding: 40px 0; }
+  .release .when { flex-direction: row; gap: 8px; padding-top: 0; }
+}
+footer a[aria-current="page"] { color: var(--ink); text-decoration: none; }
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .clouds { opacity: 0.5; }
 }
