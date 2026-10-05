@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dots &amp; Clouds</title>
-  <meta name="description" content="Five small, playful tools for your Mac: a blob camera, tasks, a pen for your screen, a dice timer and clipboard history.">
+  <meta name="description" content="Six small, playful tools for your Mac: a blob camera, tasks, a pen for your screen, a dice timer, clipboard history and framed screenshots.">
   <meta property="og:title" content="Dots &amp; Clouds">
   <meta property="og:description" content="Small and fun everyday tools for your Mac.">
   <meta property="og:image" content="https://dots.yaosamo.com/icon.png">
@@ -63,6 +63,10 @@
           <button class="dot" aria-label="Clipboard" aria-describedby="tip-clipboard" aria-pressed="false"><img class="glyph" src="icons/clipboard.png" alt="" width="48" height="48"></button>
           <div class="tip" id="tip-clipboard" role="tooltip"><h2>Clipboard <kbd>⌃⇧5</kbd></h2><p>Your recent copies, text or images, one click away from being copied again.</p></div>
         </li>
+        <li style="--tint: var(--screenshot); --i: 5">
+          <button class="dot" aria-label="Screenshot" aria-describedby="tip-screenshot" aria-pressed="false"><img class="glyph" src="icons/screenshot.png" alt="" width="48" height="48"></button>
+          <div class="tip" id="tip-screenshot" role="tooltip"><h2>Screenshot <kbd>⌃⇧6</kbd></h2><p>Snap an area or a window and set it in a frame, with a backdrop, a title bar and arrows.</p></div>
+        </li>
       </ul>
 
       <a class="down" href="#features-title" aria-label="See them in action">
@@ -91,19 +95,11 @@
       </article>
       <article style="--tint: var(--tasks)">
         <div class="stage-card">
-          <video src="clips/tasks.mp4" poster="clips/tasks.jpg" muted loop playsinline preload="none" aria-label="Tasks in Dots"></video>
+          <video src="clips/subtasks.mp4" poster="clips/subtasks.jpg" muted loop playsinline preload="none" aria-label="Tasks and subtasks in Dots"></video>
           <button class="pause" type="button" aria-label="Pause Tasks" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2" width="2.4" height="8" rx="0.8"/><rect x="7.1" y="2" width="2.4" height="8" rx="0.8"/></svg></button>
         </div>
         <h3>Tasks</h3>
-        <p>A list over everything. Type it, check it off, get back to work.</p>
-      </article>
-      <article style="--tint: var(--tasks)">
-        <div class="stage-card">
-          <video src="clips/subtasks.mp4" poster="clips/subtasks.jpg" muted loop playsinline preload="none" aria-label="Subtasks in Dots"></video>
-          <button class="pause" type="button" aria-label="Pause Subtasks" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2" width="2.4" height="8" rx="0.8"/><rect x="7.1" y="2" width="2.4" height="8" rx="0.8"/></svg></button>
-        </div>
-        <h3>Subtasks</h3>
-        <p>Drag a task a little to the right to tuck it under another.</p>
+        <p>A list over everything. Drag a task to the right to tuck it under another.</p>
       </article>
       <article style="--tint: var(--pen)">
         <div class="stage-card">
@@ -144,6 +140,14 @@
         </div>
         <h3>Clipboard</h3>
         <p>Your recent copies, one click away from being copied again.</p>
+      </article>
+      <article style="--tint: var(--screenshot)">
+        <div class="stage-card">
+          <video src="clips/screenshot.mp4" poster="clips/screenshot.jpg" muted loop playsinline preload="none" aria-label="Screenshot in Dots"></video>
+          <button class="pause" type="button" aria-label="Pause Screenshot" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2" width="2.4" height="8" rx="0.8"/><rect x="7.1" y="2" width="2.4" height="8" rx="0.8"/></svg></button>
+        </div>
+        <h3>Screenshot</h3>
+        <p>Snap a window, set it in a frame, point at what matters, copy.</p>
       </article>
     </section>
 
