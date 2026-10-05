@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Store Screenshot</title>
+<!-- One Mac App Store screenshot, 1440×900 CSS px rendered at 2× = 2880×1800 (render.sh).
+     ?shot=<name> picks its words and capture from shots.js. See docs/marketing-assets.md. -->
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1d1d1f;
+    --ink-soft: #5d6270;
+    --sky: #e8eef8;
+    --camera: #34c759; --tasks: #ff9500; --pen: #ff3b30; --timer: #af52de; --clipboard: #007aff; --screenshot: #ff2d55;
+    --tint: var(--pen);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1440px; height: 900px; overflow: hidden; }
+  body {
+    font-family: "Figtree", system-ui, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+    /* White up top, the sky's pale blue below the clouds, back to white at the bottom. */
+    /* Stops sampled from the live 1.0 screenshots. */
+    background: linear-gradient(#fbfdfe 0, #fcfdfe 290px, #f3f6fa 310px, #e8f0fb 350px, #ebf2fc 400px,
+                                #eff5fc 500px, #f5f9fd 650px, #fbfcfe 800px, #fefeff 900px);
+  }
+  /* The site's clouds (site/clouds.png), their ridge just behind the card's top edge; multiplied, so
+     the picture's white drops out. */
+  .clouds { position: absolute; left: 0; top: -20px; width: 1440px; height: 504px; mix-blend-mode: multiply; opacity: 0.7;
+            background: url("../../site/clouds.png") center / 100% 100% no-repeat; }
+
+  header { position: absolute; top: 41px; left: 0; right: 0; text-align: center; }
+  .label { display: inline-flex; align-items: center; gap: 9px; font-size: 21px; font-weight: 500; color: var(--ink-soft); }
+  .label i { width: 16px; height: 16px; border-radius: 50%; background: var(--tint); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tint) 18%, transparent); }
+  h1 { margin: 6px 0 0; font-size: 59px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.1; }
+  .sub { margin: 8px 0 0; font-size: 24px; color: var(--ink-soft); }
+
+  /* The capture: a 16:10 crop of the screen (or a window), in a rounded card. */
+  .card { position: absolute; left: 50%; top: 260px; translate: -50% 0; border-radius: 22px; overflow: hidden;
+          box-shadow: 0 30px 60px -24px rgb(20 30 60 / 0.35), 0 2px 6px rgb(20 30 60 / 0.08); background: #222; }
+  .card img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+  /* Callouts, half on the card, half off it. */
+  .pill { position: absolute; display: inline-flex; align-items: center; gap: 10px; height: 50px; padding: 0 20px 0 15px;
+          border-radius: 25px; background: #fff; font-size: 21px; font-weight: 500; white-space: nowrap;
+          box-shadow: 0 10px 28px -10px rgb(20 30 60 / 0.3), 0 1px 3px rgb(20 30 60 / 0.08); }
+  .pill i { width: 11px; height: 11px; border-radius: 50%; background: var(--tint); }
+
+  /* The bar screenshot's row of dots underneath (shots with `columns`). */
+  .columns { position: absolute; left: 60px; right: 60px; top: 600px; display: flex; justify-content: space-around; text-align: center; }
+  .columns div { flex: 1; }
+  .columns b { display: block; font-size: 32px; font-weight: 500; letter-spacing: -0.01em; }
+  .columns span { display: block; margin-top: 8px; font-size: 20px; color: var(--ink-soft); }
+  .columns kbd { display: inline-block; margin-top: 14px; padding: 4px 12px; border-radius: 8px; background: #fff; font: 500 21px "Figtree", sans-serif;
+                 box-shadow: 0 6px 16px -8px rgb(20 30 60 / 0.35), 0 0 0 1px rgb(20 30 60 / 0.05); }
+</style>
+</head>
+<body>
+  <div class="clouds"></div>
+  <header>
+    <div class="label"><i></i><span id="label"></span></div>
+    <h1 id="title"></h1>
+    <p class="sub" id="sub"></p>
+  </header>
+  <div class="card" id="card"><img id="capture" alt=""></div>
+  <script src="shots.js"></script>
+  <script>
+    const shot = SHOTS[new URLSearchParams(location.search).get("shot")];
+    document.documentElement.style.setProperty("--tint", `var(--${shot.tint})`);
+    document.getElementById("label").textContent = shot.label;
+    document.getElementById("title").textContent = shot.title;
+    document.getElementById("sub").textContent = shot.sub;
+    const card = document.getElementById("card");
+    card.style.width = `${shot.card.width}px`;
+    card.style.height = `${shot.card.height}px`;
+    document.getElementById("capture").src = shot.capture;
+    for (const pill of shot.pills ?? []) {
+      const el = document.createElement("div");
+      el.className = "pill";
+      el.innerHTML = "<i></i>";
+      el.append(pill.text);
+      Object.assign(el.style, pill.at);
+      document.body.append(el);
+    }
+    if (shot.columns) {
+      const row = document.createElement("div");
+      row.className = "columns";
+      for (const c of shot.columns) {
+        const col = document.createElement("div");
+        col.innerHTML = `<b style="color: var(--${c.tint})"></b><span></span><kbd></kbd>`;
+        col.querySelector("b").textContent = c.name;
+        col.querySelector("span").textContent = c.line;
+        col.querySelector("kbd").textContent = c.key;
+        row.append(col);
+      }
+      document.body.append(row);
+    }
+  </script>
+</body>
+</html>
