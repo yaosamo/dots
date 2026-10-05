@@ -340,6 +340,7 @@ private struct PreviewCard: View {
         case .pen: PenDemo()
         case .timer: TimerDemo()
         case .clipboard: ClipboardDemo()
+        case .screenshot: ScreenshotDemo()
         }
     }
 }
@@ -542,6 +543,72 @@ private struct ClipboardDemo: View {
             .padding(12)
         }
         .background(DemoBackdrop())
+    }
+}
+
+/// A little window gets picked, drops into a gradient frame with a shadow, and gets an arrow, on a loop.
+private struct ScreenshotDemo: View {
+    private static let step: TimeInterval = 0.9
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: Self.step)) { timeline in
+            // 0 the window, 1 picked, 2 framed, 3 an arrow, 4 a beat to look at it.
+            let tick = Int(timeline.date.timeIntervalSinceReferenceDate / Self.step) % 5
+            let isFramed = tick >= 2
+            ZStack {
+                LinearGradient(colors: FrameBackground.dusk.colors ?? [], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .opacity(isFramed ? 1 : 0)
+                window
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Dot.screenshot.tint, lineWidth: 2.5)
+                            .padding(-4)
+                            .opacity(tick == 1 ? 1 : 0)
+                    )
+                    .scaleEffect(isFramed ? 0.78 : 1)
+                    .shadow(color: .black.opacity(isFramed ? 0.3 : 0), radius: 12, y: 6)
+                Arrow()
+                    .trim(from: 0, to: tick >= 3 ? 1 : 0)
+                    .stroke(Color(hex: 0xFF3B30), style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
+                    .frame(width: 54, height: 34)
+                    .offset(x: 58, y: 34)
+            }
+            .animation(.spring(response: 0.5, dampingFraction: 0.8), value: tick)
+        }
+        .background(DemoBackdrop())
+    }
+
+    private var window: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 5) {
+                ForEach([0xFF5F57, 0xFEBC2E, 0x28C840] as [UInt32], id: \.self) { Circle().fill(Color(hex: $0)).frame(width: 7, height: 7) }
+            }
+            .padding(8)
+            VStack(alignment: .leading, spacing: 6) {
+                RoundedRectangle(cornerRadius: 3).fill(Color.black.opacity(0.75)).frame(width: 90, height: 8)
+                ForEach([150, 130, 110] as [CGFloat], id: \.self) { width in
+                    RoundedRectangle(cornerRadius: 3).fill(Color.black.opacity(0.15)).frame(width: width, height: 6)
+                }
+            }
+            .padding(.horizontal, 12)
+            Spacer()
+        }
+        .frame(width: 190, height: 110)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.white))
+    }
+}
+
+/// From the bottom right, curving up to point at the window.
+private struct Arrow: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let tip = CGPoint(x: rect.minX, y: rect.minY)
+        path.move(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addQuadCurve(to: tip, control: CGPoint(x: rect.minX + rect.width * 0.2, y: rect.maxY))
+        path.move(to: CGPoint(x: tip.x + 11, y: tip.y + 1))
+        path.addLine(to: tip)
+        path.addLine(to: CGPoint(x: tip.x + 1, y: tip.y + 11))
+        return path
     }
 }
 

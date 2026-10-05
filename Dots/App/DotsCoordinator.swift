@@ -4,7 +4,7 @@ import SwiftUI
 
 /// The tools. New ones join the end; each keeps its shortcut number for good.
 enum Dot: Int, CaseIterable, Identifiable {
-    case camera, tasks, pen, timer, clipboard
+    case camera, tasks, pen, timer, clipboard, screenshot
 
     var id: Int { rawValue }
 
@@ -15,6 +15,7 @@ enum Dot: Int, CaseIterable, Identifiable {
         case .pen: "Draw on screen"
         case .timer: "Timer"
         case .clipboard: "Clipboard"
+        case .screenshot: "Screenshot"
         }
     }
 
@@ -26,6 +27,7 @@ enum Dot: Int, CaseIterable, Identifiable {
         case .pen: "Draw on any screen, spotlight what matters, or sketch on a whiteboard."
         case .timer: "A little die that tumbles to the bottom of your screen and counts down. Click to start."
         case .clipboard: "Your recent copies, one click away from being copied again."
+        case .screenshot: "Snap an area or a window and set it in a frame. Pick a backdrop, draw arrows, copy."
         }
     }
 
@@ -39,6 +41,7 @@ enum Dot: Int, CaseIterable, Identifiable {
         case .pen: "pencil.tip"
         case .timer: "die.face.5.fill"
         case .clipboard: "doc.on.clipboard"
+        case .screenshot: "camera.viewfinder"
         }
     }
 
@@ -49,6 +52,7 @@ enum Dot: Int, CaseIterable, Identifiable {
         case .pen: .red
         case .timer: .purple
         case .clipboard: .blue
+        case .screenshot: .pink
         }
     }
 
@@ -86,6 +90,7 @@ final class DotsCoordinator: ObservableObject {
     private var pen: PenController?
     private var timer: DiceTimerController?
     private var clipboard: ClipboardController?
+    private var screenshot: ScreenshotController?
     private let onboarding = OnboardingController()
 
     func start() {
@@ -95,6 +100,15 @@ final class DotsCoordinator: ObservableObject {
         pen = PenController { [weak self] in self?.set(.pen, isOn: $0) }
         timer = DiceTimerController { [weak self] in self?.set(.timer, isOn: $0) }
         clipboard = ClipboardController { [weak self] in self?.set(.clipboard, isOn: $0) }
+        screenshot = ScreenshotController(
+            onVisibilityChange: { [weak self] in self?.set(.screenshot, isOn: $0) },
+            // The pen stays up while an area is picked, so its ink can be in the shot.
+            onEdit: { [weak self] in
+                self?.tasks?.hide()
+                self?.pen?.hide()
+                self?.clipboard?.hide()
+            }
+        )
         bar = DotsBarController(coordinator: self)
         statusMenu = StatusMenuController(coordinator: self)
         syncEnabledDots()
@@ -112,18 +126,26 @@ final class DotsCoordinator: ObservableObject {
         case .camera:
             camera?.toggle()
         case .tasks:
-            // Tasks, pen and the clipboard all cover the screen; only one at a time.
+            // Tasks, pen, the clipboard and the screenshot editor all cover the screen; only one at a time.
             pen?.hide()
             clipboard?.hide()
+            screenshot?.hide()
             tasks?.toggle()
         case .pen:
             tasks?.hide()
             clipboard?.hide()
+            screenshot?.hide()
             pen?.toggle()
         case .clipboard:
             tasks?.hide()
             pen?.hide()
+            screenshot?.hide()
             clipboard?.toggle()
+        case .screenshot:
+            // The pen's ink can go in the shot; the editor closes the pen once the shot is taken.
+            tasks?.hide()
+            clipboard?.hide()
+            screenshot?.toggle()
         case .timer:
             timer?.toggle()
         }
@@ -151,6 +173,7 @@ final class DotsCoordinator: ObservableObject {
         tasks?.hide()
         pen?.hide()
         clipboard?.hide()
+        screenshot?.hide()
         onboarding.show(mode: mode, enabled: Set(settings.enabled)) { [weak self] selection in
             self?.apply(selection)
         }
@@ -175,6 +198,7 @@ final class DotsCoordinator: ObservableObject {
         case .pen: pen
         case .timer: timer
         case .clipboard: clipboard
+        case .screenshot: screenshot
         }
     }
 
