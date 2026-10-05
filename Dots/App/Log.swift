@@ -6,6 +6,7 @@ enum Log {
     private static let subsystem = "app.dots.Dots"
     static let camera = Logger(subsystem: subsystem, category: "camera")
     static let hotKeys = Logger(subsystem: subsystem, category: "hotkeys")
+    static let screenshot = Logger(subsystem: subsystem, category: "screenshot")
 
     /// Milliseconds since a `systemUptime` timestamp (the same clock as `NSEvent.timestamp`).
     static func ms(since start: TimeInterval) -> Double {

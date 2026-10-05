@@ -8,6 +8,7 @@
   --pen: #ff3b30;
   --timer: #af52de;
   --clipboard: #007aff;
+  --screenshot: #ff2d55;
   --focus: #007aff;
   --page-below: var(--page);
 
@@ -316,6 +317,9 @@ footer a[aria-current="page"] { color: var(--ink); text-decoration: none; }
 @media (max-width: 520px) {
   .cta { padding: 8px 14px; }
   .cta-long { display: none; }
+  /* Six dots across a phone: a little smaller, a little closer. */
+  .dots { gap: 10px; }
+  .dot { --size: 48px; }
   .dots li:first-child .tip { left: 0; translate: 0 6px; }
   .dots li:last-child .tip { left: auto; right: 0; translate: 0 6px; }
   .dots li:is(:first-child, :last-child):has(.dot:hover, .dot[aria-pressed="true"]) .tip { translate: 0 0; }
