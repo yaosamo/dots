@@ -84,6 +84,10 @@ struct CameraView: View {
                     UnlockController.shared.show(for: .cameraEffects)
                 }
             }
+            ControlButton(symbol: "web.camera", help: "Camera and microphone") {
+                // After the click finishes, so the menu doesn't open inside the button's action.
+                DispatchQueue.main.async { model.showDeviceMenu() }
+            }
             ControlButton(symbol: "xmark", help: "Close") { model.onClose?() }
         }
         .padding(3)
@@ -247,6 +251,7 @@ final class CameraBubbleView: NSView {
     private var blobDuration: TimeInterval = 0
     /// The camera frame's width over height (from the tracker's frames).
     private var videoAspect: CGFloat = 16 / 9
+    private var voiceLevel: CGFloat = 0
     private let previewLayer: AVCaptureVideoPreviewLayer
     private var startObserver: NSObjectProtocol?
     /// Off for previews embedded in another window (Welcome), which shouldn't move with the bubble.
@@ -355,10 +360,10 @@ final class CameraBubbleView: NSView {
             clipLayer.mask = nil
             clipLayer.masksToBounds = true
             previewLayer.frame = clipLayer.bounds
-            clipLayer.borderWidth = 1
             shadowLayer.shadowPath = Self.roundedPath(clipLayer.bounds, clipLayer.cornerRadius)
             shadowLayer.backgroundColor = NSColor.black.cgColor
             blobOutline.isHidden = true
+            applyVoiceLevel()
             blobLink?.invalidate()
             blobLink = nil
             return
@@ -434,10 +439,34 @@ final class CameraBubbleView: NSView {
         window?.performDrag(with: event)
     }
 
-    /// Selfie cameras should feel like a mirror. The connection only exists once capture has an input.
-    private func mirror() {
+    /// The microphone's level, 0…1: the bubble's hairline edge turns green and thickens as you speak,
+    /// like a call's speaking ring. It stays the plain hairline at 0, with no microphone.
+    func setVoiceLevel(_ level: CGFloat) {
+        guard abs(level - voiceLevel) > 0.01 || (level == 0 && voiceLevel != 0) else { return }
+        voiceLevel = level
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        applyVoiceLevel()
+        CATransaction.commit()
+    }
+
+    private func applyVoiceLevel() {
+        let color = (NSColor.white.withAlphaComponent(0.25).blended(withFraction: voiceLevel, of: .systemGreen)
+            ?? .white).cgColor
+        let width = 1 + 2 * voiceLevel
+        // The blob draws its own edge; the rounded rectangle's is the clip's border.
+        clipLayer.borderWidth = clipLayer.mask == nil ? width : 0
+        clipLayer.borderColor = color
+        blobOutline.strokeColor = color
+        blobOutline.lineWidth = width
+    }
+
+    /// Selfie cameras should feel like a mirror; Desk View looks down at the desk, so it isn't
+    /// flipped. The connection only exists once capture has an input; runs again when it changes.
+    func mirror() {
         guard let connection = previewLayer.connection, connection.isVideoMirroringSupported else { return }
+        let device = connection.inputPorts.lazy.compactMap { $0.input as? AVCaptureDeviceInput }.first?.device
         connection.automaticallyAdjustsVideoMirroring = false
-        connection.isVideoMirrored = true
+        connection.isVideoMirrored = device?.deviceType != .deskViewCamera
     }
 }

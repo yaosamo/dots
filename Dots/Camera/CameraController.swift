@@ -108,7 +108,16 @@ final class CameraModel: ObservableObject {
         didSet { UserDefaults.standard.set(effect.rawValue, forKey: Self.effectKey) }
     }
 
-    let session = CameraSession()
+    /// The chosen camera (nil: the built-in one) and microphone (nil: none), kept between launches.
+    @Published private(set) var cameraID = UserDefaults.standard.string(forKey: CameraSession.cameraKey) {
+        didSet { UserDefaults.standard.set(cameraID, forKey: CameraSession.cameraKey) }
+    }
+    @Published private(set) var microphoneID = UserDefaults.standard.string(forKey: CameraSession.microphoneKey) {
+        didSet { UserDefaults.standard.set(microphoneID, forKey: CameraSession.microphoneKey) }
+    }
+    @Published private(set) var isMicrophoneDenied = false
+
+    lazy var session = CameraSession(cameraID: cameraID, microphoneID: microphoneID)
     var onClose: (() -> Void)?
     var onLayoutRequest: ((Shape, Size) -> Void)?
 
@@ -118,6 +127,55 @@ final class CameraModel: ObservableObject {
     func stepSize() { onLayoutRequest?(shape, size.next) }
     func toggleShape() { onLayoutRequest?(shape.next, size) }
     func stepEffect() { effect = effect.next }
+
+    func selectCamera(_ id: String) {
+        cameraID = id
+        session.selectCamera(id: id)
+    }
+
+    func selectMicrophone(_ id: String?) {
+        microphoneID = id
+        isMicrophoneDenied = false
+        session.selectMicrophone(id: id) { [weak self] in self?.isMicrophoneDenied = true }
+    }
+
+    /// Every camera and microphone, with the ones in use checked, at the pointer. AppKit's menu
+    /// rather than SwiftUI's: the hover controls it's opened from go away under it.
+    func showDeviceMenu() {
+        let menu = NSMenu()
+        menu.addItem(.sectionHeader(title: "Camera"))
+        let camera = CameraSession.camera(id: cameraID)?.uniqueID
+        let cameras = CameraSession.cameras()
+        if cameras.isEmpty { menu.addItem(DeviceMenuItem(title: "No camera found", isOn: false, action: nil)) }
+        for device in cameras {
+            menu.addItem(DeviceMenuItem(title: device.localizedName, isOn: device.uniqueID == camera) { [weak self] in
+                self?.selectCamera(device.uniqueID)
+            })
+        }
+
+        menu.addItem(.separator())
+        menu.addItem(.sectionHeader(title: "Microphone"))
+        let microphones = CameraSession.microphones()
+        let microphone = microphones.first { $0.uniqueID == microphoneID && !isMicrophoneDenied }?.uniqueID
+        menu.addItem(DeviceMenuItem(title: "None", isOn: microphone == nil) { [weak self] in
+            self?.selectMicrophone(nil)
+        })
+        for device in microphones {
+            menu.addItem(DeviceMenuItem(title: device.localizedName, isOn: device.uniqueID == microphone) { [weak self] in
+                self?.selectMicrophone(device.uniqueID)
+            })
+        }
+        if isMicrophoneDenied {
+            menu.addItem(DeviceMenuItem(title: "Allow Microphone in System Settings…", isOn: false) {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+            })
+        } else {
+            let hint = NSMenuItem(title: "The bubble's edge glows as you speak", action: nil, keyEquivalent: "")
+            hint.isEnabled = false
+            menu.addItem(hint)
+        }
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
 
     /// Only the controller applies layout, so the bubble and controls animate together.
     fileprivate func apply(shape: Shape, size: Size) {
@@ -172,6 +230,8 @@ final class CameraController: DotFeature {
         panel.contentView = FirstClickHostingView(rootView: CameraView(model: model, bubble: bubble))
         model.onClose = { [weak self] in self?.hide() }
         model.onLayoutRequest = { [weak self] in self?.morph(to: $0, size: $1) }
+        model.session.onCameraChange = { [weak bubble] in bubble?.mirror() }
+        model.session.onVoiceLevel = { [weak bubble] in bubble?.setVoiceLevel($0) }
     }
 
     func show() {
@@ -234,4 +294,22 @@ final class CameraController: DotFeature {
         }
         Log.camera.debug("Morph started \(Log.ms(since: requestedAt), format: .fixed(precision: 1)) ms after request, window \(Int(self.panel.frame.width))×\(Int(self.panel.frame.height)) (fixed)")
     }
+}
+
+/// A checkable menu item that runs a closure (nil: disabled).
+private final class DeviceMenuItem: NSMenuItem {
+    private let run: (() -> Void)?
+
+    init(title: String, isOn: Bool, action run: (() -> Void)?) {
+        self.run = run
+        super.init(title: title, action: run == nil ? nil : #selector(runAction), keyEquivalent: "")
+        target = self
+        state = isOn ? .on : .off
+        isEnabled = run != nil
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    @objc private func runAction() { run?() }
 }
