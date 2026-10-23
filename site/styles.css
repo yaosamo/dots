@@ -247,6 +247,8 @@ footer .spacer { flex: 1; }
 .more-apps a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; color: var(--ink); text-decoration: none; transition: background 0.15s; }
 .more-apps a:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .more-apps a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.more-apps h2 a { display: inline; padding: 0; border-radius: 0; color: inherit; text-decoration: underline; text-underline-offset: 2px; background: none; }
+.more-apps h2 a:hover { color: var(--ink); background: none; }
 .more-apps img { width: 52px; height: 52px; flex: none; }
 .more-apps b { display: block; font-weight: 500; }
 .more-apps small { display: block; font-size: var(--step--1); line-height: 1.35; color: var(--ink-soft); }
