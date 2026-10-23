@@ -239,6 +239,19 @@ a.cta[href]:hover { transform: scale(1.03); }
 footer { width: min(100% - 32px, 760px); margin: 140px auto 0; padding: 24px 0 48px; display: flex; flex-wrap: wrap; gap: 8px 24px; color: var(--ink-soft); font-size: var(--step--1); border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
 footer .spacer { flex: 1; }
 
+/* My other apps, just above the footer: icon, name and what it is, three across. */
+.more-apps { width: min(100% - 32px, 760px); margin: 140px auto 0; }
+.more-apps + footer { margin-top: 40px; }
+.more-apps h2 { margin: 0 0 16px; padding: 0 12px; font-size: var(--step--1); font-weight: 500; color: var(--ink-soft); }
+.more-apps ul { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.more-apps a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; color: var(--ink); text-decoration: none; transition: background 0.15s; }
+.more-apps a:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.more-apps a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.more-apps img { width: 52px; height: 52px; flex: none; }
+.more-apps b { display: block; font-weight: 500; }
+.more-apps small { display: block; font-size: var(--step--1); line-height: 1.35; color: var(--ink-soft); }
+@media (max-width: 680px) { .more-apps ul { grid-template-columns: 1fr; } }
+
 /* Privacy and Support: one readable column. */
 .page { width: min(100% - 32px, 640px); margin: 0 auto; padding: 56px 0 0; }
 .page .brand { margin-bottom: 48px; text-decoration: none; }
